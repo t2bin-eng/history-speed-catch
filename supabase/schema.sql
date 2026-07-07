@@ -65,3 +65,11 @@ create index if not exists idx_card_claims_room_id on card_claims(room_id);
 alter publication supabase_realtime add table rooms;
 alter publication supabase_realtime add table players;
 alter publication supabase_realtime add table card_claims;
+
+-- Supabase는 새 테이블에 기본적으로 RLS를 켜두므로, 정책 없이 anon key로
+-- 쓰기가 전부 막힌다. MVP는 로그인 없는 방 코드 방식이라 명시적으로 끈다.
+alter table rooms disable row level security;
+alter table symbols disable row level security;
+alter table cards disable row level security;
+alter table players disable row level security;
+alter table card_claims disable row level security;

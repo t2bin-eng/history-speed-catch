@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { parseSymbolCsv } from "@/lib/csv";
 import { generateDobbleDeck } from "@/lib/dobbleDeck";
+import { createRoom } from "@/lib/rooms";
 import type { SymbolCsvRow } from "@/types";
 import SymbolTile from "./SymbolTile";
 
@@ -10,6 +11,22 @@ export default function CsvUploader() {
   const [rows, setRows] = useState<SymbolCsvRow[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [deck, setDeck] = useState<SymbolCsvRow[][] | null>(null);
+  const [creatingRoom, setCreatingRoom] = useState(false);
+  const [roomError, setRoomError] = useState<string | null>(null);
+  const [roomCode, setRoomCode] = useState<string | null>(null);
+
+  async function handleCreateRoom() {
+    setCreatingRoom(true);
+    setRoomError(null);
+    try {
+      const { roomCode } = await createRoom(rows);
+      setRoomCode(roomCode);
+    } catch (e) {
+      setRoomError(e instanceof Error ? e.message : "방 생성 중 오류가 발생했습니다.");
+    } finally {
+      setCreatingRoom(false);
+    }
+  }
 
   async function handleFile(file: File) {
     const text = await file.text();
@@ -108,6 +125,24 @@ export default function CsvUploader() {
               </div>
             ))}
           </div>
+
+          {roomCode ? (
+            <div className="mt-6 rounded-md border border-green-300 bg-green-50 p-4">
+              <p className="text-sm text-green-800">방이 생성되었습니다. 학생들에게 아래 방 코드를 알려주세요.</p>
+              <p className="mt-1 text-3xl font-bold tracking-widest text-green-900">{roomCode}</p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCreateRoom}
+              disabled={creatingRoom}
+              className="mt-6 flex h-11 items-center justify-center rounded-full bg-foreground px-6 text-background disabled:opacity-50"
+            >
+              {creatingRoom ? "방 생성 중..." : "방 생성"}
+            </button>
+          )}
+
+          {roomError && <p className="mt-2 text-sm text-red-700">{roomError}</p>}
         </div>
       )}
     </div>
