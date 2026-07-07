@@ -1,6 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { generateDobbleDeck } from "./dobbleDeck";
-import type { SymbolCsvRow } from "@/types";
+import type { Room, SymbolCsvRow } from "@/types";
 
 function generateRoomCode(): string {
   return String(Math.floor(10000 + Math.random() * 90000)); // 5자리
@@ -60,6 +60,24 @@ export async function createRoom(
   if (cardsError) throw new Error(cardsError.message);
 
   return { roomId: room.id, roomCode: room.room_code };
+}
+
+export async function getRoomByCode(roomCode: string): Promise<Room | null> {
+  const { data, error } = await supabase
+    .from("rooms")
+    .select("*")
+    .eq("room_code", roomCode)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as Room | null;
+}
+
+export async function startGame(roomId: string): Promise<void> {
+  const { error } = await supabase
+    .from("rooms")
+    .update({ status: "playing", current_card_pair_index: 0 })
+    .eq("id", roomId);
+  if (error) throw new Error(error.message);
 }
 
 export async function joinRoom(

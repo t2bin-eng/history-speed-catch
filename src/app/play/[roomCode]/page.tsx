@@ -4,8 +4,11 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getPlayerSession, type PlayerSession } from "@/lib/storage";
+import { getCurrentCardPair, type CardWithSymbols } from "@/lib/game";
+import type { Room } from "@/types";
+import DobbleCard from "@/components/DobbleCard";
 
-export default function PlayWaitingRoomPage({
+export default function PlayPage({
   params,
 }: {
   params: Promise<{ roomCode: string }>;
@@ -16,6 +19,8 @@ export default function PlayWaitingRoomPage({
     typeof window === "undefined" ? null : getPlayerSession(roomCode)
   );
   const [playerCount, setPlayerCount] = useState<number | null>(null);
+  const [room, setRoom] = useState<Room | null>(null);
+  const [pair, setPair] = useState<[CardWithSymbols, CardWithSymbols] | null>(null);
 
   useEffect(() => {
     if (!session) router.replace("/student");
@@ -34,7 +39,7 @@ export default function PlayWaitingRoomPage({
     }
     loadCount();
 
-    const channel = supabase
+    const playersChannel = supabase
       .channel(`room-players-${session.roomId}`)
       .on(
         "postgres_changes",
@@ -43,11 +48,51 @@ export default function PlayWaitingRoomPage({
       )
       .subscribe();
 
+    async function loadRoom() {
+      const { data } = await supabase.from("rooms").select("*").eq("id", session!.roomId).maybeSingle();
+      if (active && data) setRoom(data as Room);
+    }
+    loadRoom();
+
+    const roomChannel = supabase
+      .channel(`room-status-${session.roomId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "rooms", filter: `id=eq.${session.roomId}` },
+        (payload) => {
+          if (active) setRoom(payload.new as Room);
+        }
+      )
+      .subscribe();
+
     return () => {
       active = false;
-      supabase.removeChannel(channel);
+      supabase.removeChannel(playersChannel);
+      supabase.removeChannel(roomChannel);
     };
   }, [session]);
+
+  useEffect(() => {
+    if (!room || room.status !== "playing") return;
+    let active = true;
+    getCurrentCardPair(room.id, room.current_card_pair_index).then((result) => {
+      if (active) setPair(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [room]);
+
+  if (room?.status === "playing" && pair) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-8">
+        <div className="flex flex-col items-center gap-6">
+          <DobbleCard symbols={pair[0].symbols} size={280} />
+          <DobbleCard symbols={pair[1].symbols} size={280} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
