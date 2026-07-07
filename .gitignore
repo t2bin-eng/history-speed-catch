@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Design 원본(대용량, 참고용)
+*.dc.html
+역사 카드 디자인*.html
