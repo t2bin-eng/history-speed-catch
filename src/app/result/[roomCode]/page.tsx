@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Papa from "papaparse";
 import { getRoomByCode } from "@/lib/rooms";
@@ -20,6 +20,17 @@ export default function ResultPage({
   const [myPlayerId] = useState<string | null>(() =>
     typeof window === "undefined" ? null : getPlayerSession(roomCode)?.playerId ?? null
   );
+  const [muted, setMuted] = useState(false);
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
+
+  // 순위표(결과) 화면에 들어오면 전용 배경음악을 재생한다. 브라우저 자동재생 정책상
+  // 막힐 수 있어 실패해도 조용히 무시한다(음소거 버튼으로 사용자가 직접 켤 수 있음).
+  useEffect(() => {
+    bgmRef.current?.play().catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (bgmRef.current) bgmRef.current.muted = muted;
+  }, [muted]);
 
   useEffect(() => {
     let active = true;
@@ -93,7 +104,17 @@ export default function ResultPage({
   const mine = results.find((r) => r.playerId === myPlayerId);
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
+    <div className="bg-ranking-screen flex flex-1 flex-col items-center px-6 py-10">
+      <audio ref={bgmRef} src="/audio/ranking-bgm.mp3" loop />
+      <button
+        type="button"
+        onClick={() => setMuted((m) => !m)}
+        className="fixed right-6 top-6 z-50 flex h-10 w-10 items-center justify-center rounded-full border-2 border-gray-300 bg-white text-lg shadow-sm"
+        aria-label={muted ? "소리 켜기" : "소리 끄기"}
+      >
+        {muted ? "🔇" : "🔊"}
+      </button>
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-2xl bg-white/90 p-6 shadow-lg backdrop-blur-sm">
       <h1 className="text-2xl font-bold">결과 — 방 코드 {roomCode}</h1>
 
       {mine && (
@@ -168,6 +189,7 @@ export default function ResultPage({
         >
           결과 CSV 다운로드 (교사용)
         </button>
+      </div>
       </div>
     </div>
   );

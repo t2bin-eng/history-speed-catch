@@ -40,3 +40,40 @@ body {
 .deal-card-animate {
   animation: dealCard 0.4s ease-out;
 }
+
+/* 카드 위 기호(아이콘)에 커서를 올리면 하이라이트되는 효과. 회전각은 아이콘마다
+   달라 인라인 스타일로 --icon-rotation에 넣어주고, 여기서는 그 변수를 기준으로
+   scale/그림자만 얹는다(그래야 호버 시에도 원래 회전이 유지된다). */
+.dobble-icon {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  transform: rotate(var(--icon-rotation, 0deg));
+}
+.dobble-icon-clickable:hover {
+  transform: rotate(var(--icon-rotation, 0deg)) scale(1.18);
+  box-shadow: 0 0 0 4px rgba(255, 200, 87, 0.85), 0 4px 10px rgba(0, 0, 0, 0.25);
+  filter: brightness(1.1);
+  z-index: 5;
+}
+
+/* 화면별 배경 이미지. 학생 게임 화면은 모바일/가로(태블릿·PC) 두 버전을 media
+   query로 전환한다 — 가로 버전은 순위표(결과 화면) 배경으로도 그대로 재사용. */
+.bg-waiting-room {
+  background-image: url("/images/waiting-bg.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.bg-play-screen {
+  background-image: url("/images/play-bg-mobile.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.bg-ranking-screen {
+  background-image: url("/images/play-bg-desktop.jpg");
+  background-size: cover;
+  background-position: center;
+}
+@media (min-width: 768px) {
+  .bg-play-screen {
+    background-image: url("/images/play-bg-desktop.jpg");
+  }
+}

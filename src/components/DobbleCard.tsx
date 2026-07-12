@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import type { Symbol } from "@/types";
 import { getIconComponent } from "@/lib/icons";
 
@@ -161,23 +162,26 @@ export default function DobbleCard({ symbols, cardId = "", onSymbolClick, size =
             key={symbol.id}
             type="button"
             onClick={() => onSymbolClick?.(symbol.id)}
-            style={{
-              position: "absolute",
-              left: size * slot.x - iconSize / 2,
-              top: size * slot.y - iconSize / 2,
-              width: iconSize,
-              height: iconSize,
-              borderRadius: "50%",
-              border: `2px solid ${INK}`,
-              background: paletteColorFor(symbol.id),
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              overflow: "hidden",
-              transform: `rotate(${slot.rotation}deg)`,
-              cursor: onSymbolClick ? "pointer" : "default",
-              padding: 0,
-            }}
+            className={`dobble-icon${onSymbolClick ? " dobble-icon-clickable" : ""}`}
+            style={
+              {
+                position: "absolute",
+                left: size * slot.x - iconSize / 2,
+                top: size * slot.y - iconSize / 2,
+                width: iconSize,
+                height: iconSize,
+                borderRadius: "50%",
+                border: `2px solid ${INK}`,
+                background: paletteColorFor(symbol.id),
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                cursor: onSymbolClick ? "pointer" : "default",
+                padding: 0,
+                "--icon-rotation": `${slot.rotation}deg`,
+              } as CSSProperties
+            }
           >
             {symbol.image_url ? (
               // eslint-disable-next-line @next/next/no-img-element

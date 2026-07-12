@@ -28,6 +28,8 @@ interface AcquisitionBanner {
   label: string;
 }
 
+const BGM_TRACKS = ["/audio/bgm-1.mp3", "/audio/bgm-2.mp3"];
+
 export default function TvPage({ params }: { params: Promise<{ roomCode: string }> }) {
   const { roomCode } = use(params);
   const [room, setRoom] = useState<Room | null>(null);
@@ -37,6 +39,14 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
   const [answerClaims, setAnswerClaims] = useState<AnswerClaimWithDetails[]>([]);
   const [banner, setBanner] = useState<AcquisitionBanner | null>(null);
   const [now, setNow] = useState<number | null>(null);
+  const [muted, setMuted] = useState(false);
+
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
+  const startSoundRef = useRef<HTMLAudioElement | null>(null);
+  const revealSoundRef = useRef<HTMLAudioElement | null>(null);
+  const acquiredSoundRef = useRef<HTMLAudioElement | null>(null);
+  const bgmTrackIndexRef = useRef(0);
+  const prevCenterCardIdRef = useRef<string | null>(null);
 
   // 실시간 이벤트 콜백 안에서 최신 players/centerCard를 읽기 위한 ref — 구독 자체를
   // players/centerCard가 바뀔 때마다 재생성하지 않기 위해 값만 매 렌더마다 갱신해둔다.
@@ -47,6 +57,40 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
   const centerCardRef = useRef<CardWithSymbols | null>(centerCard);
   useEffect(() => {
     centerCardRef.current = centerCard;
+  }, [centerCard]);
+
+  useEffect(() => {
+    [bgmRef, startSoundRef, revealSoundRef, acquiredSoundRef].forEach((ref) => {
+      if (ref.current) ref.current.muted = muted;
+    });
+  }, [muted]);
+
+  // 배경음악: 게임이 진행 중일 때만 재생하고, 곡이 끝나면 두 곡을 번갈아 이어 튼다.
+  useEffect(() => {
+    const audio = bgmRef.current;
+    if (!audio) return;
+    if (room?.status === "playing") {
+      audio.play().catch(() => {});
+    } else {
+      audio.pause();
+    }
+  }, [room?.status]);
+
+  function handleBgmEnded() {
+    bgmTrackIndexRef.current = bgmTrackIndexRef.current === 0 ? 1 : 0;
+    const audio = bgmRef.current;
+    if (!audio) return;
+    audio.src = BGM_TRACKS[bgmTrackIndexRef.current];
+    audio.play().catch(() => {});
+  }
+
+  // 중앙 카드가 바뀔 때마다 카드 공개 효과음, 게임의 첫 카드일 때는 시작 소리도 함께.
+  useEffect(() => {
+    if (!centerCard || prevCenterCardIdRef.current === centerCard.cardId) return;
+    const isFirstCard = prevCenterCardIdRef.current === null;
+    prevCenterCardIdRef.current = centerCard.cardId;
+    if (isFirstCard) startSoundRef.current?.play().catch(() => {});
+    revealSoundRef.current?.play().catch(() => {});
   }, [centerCard]);
 
   useEffect(() => {
@@ -141,6 +185,7 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
             const symbol = centerCardRef.current?.symbols.find((s) => s.id === row.symbol_id);
             setBanner({ key: `${row.player_id}-${row.symbol_id}-${Date.now()}`, nickname, label: symbol?.label ?? "" });
             setTimeout(() => setBanner(null), 3500);
+            acquiredSoundRef.current?.play().catch(() => {});
           }
           loadClaims();
         }
@@ -195,6 +240,24 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
 
   return (
     <div className="relative flex min-h-screen flex-col bg-zinc-50 px-10 py-8">
+      { }
+      <audio ref={bgmRef} src={BGM_TRACKS[0]} onEnded={handleBgmEnded} />
+      { }
+      <audio ref={startSoundRef} src="/audio/game-start.mp3" />
+      { }
+      <audio ref={revealSoundRef} src="/audio/card-reveal.mp3" />
+      { }
+      <audio ref={acquiredSoundRef} src="/audio/card-acquired.mp3" />
+
+      <button
+        type="button"
+        onClick={() => setMuted((m) => !m)}
+        className="fixed right-6 top-6 z-50 flex h-10 w-10 items-center justify-center rounded-full border-2 border-gray-300 bg-white text-lg shadow-sm"
+        aria-label={muted ? "소리 켜기" : "소리 끄기"}
+      >
+        {muted ? "🔇" : "🔊"}
+      </button>
+
       {banner && (
         <div className="fixed left-1/2 top-24 z-50 -translate-x-1/2 rounded-2xl border-4 border-amber-400 bg-white px-10 py-6 text-center shadow-2xl">
           <p className="text-3xl font-bold text-amber-700">🎉 {banner.nickname}님이 획득!</p>

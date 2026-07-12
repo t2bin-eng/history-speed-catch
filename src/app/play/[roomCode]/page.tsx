@@ -43,6 +43,7 @@ export default function PlayPage({
   const [centerCard, setCenterCard] = useState<CardWithSymbols | null>(null);
   const [matchSubmitting, setMatchSubmitting] = useState(false);
   const [matchWrongFlash, setMatchWrongFlash] = useState(false);
+  const [hasAttemptedMatch, setHasAttemptedMatch] = useState(false);
   const [answerSubmitting, setAnswerSubmitting] = useState(false);
   const [chosenChoice, setChosenChoice] = useState<Choice | null>(null);
   const [lastWrongChoice, setLastWrongChoice] = useState<Choice | null>(null);
@@ -169,6 +170,7 @@ export default function PlayPage({
     setChosenChoice(null);
     setLastWrongChoice(null);
     setMatchWrongFlash(false);
+    setHasAttemptedMatch(false);
   }
 
   // 우선권자 닉네임: 본인이면 세션에서 즉시 알 수 있고(렌더 중 계산), 남이면
@@ -251,9 +253,13 @@ export default function PlayPage({
       !myCard ||
       !centerCard ||
       room.round_phase !== "matching" ||
-      matchSubmitting
+      matchSubmitting ||
+      hasAttemptedMatch
     )
       return;
+    // 무한 클릭으로 정답을 찍어 맞추는 꼼수를 막기 위해, 맞든 틀리든 라운드당 딱
+    // 한 번만 시도할 수 있게 한다.
+    setHasAttemptedMatch(true);
     const correctId = findCommonSymbolId([myCard, centerCard]);
     if (symbolId !== correctId) {
       setMatchWrongFlash(true);
@@ -294,7 +300,7 @@ export default function PlayPage({
   const remainingSec = priorityRemainingMs !== null ? Math.ceil(priorityRemainingMs / 1000) : null;
 
   const myCardsTray = session && room?.status === "playing" && myCards.length > 0 && (
-    <div className="mt-6 flex w-full max-w-sm flex-col items-center gap-2">
+    <div className="mt-6 flex w-full max-w-sm flex-col items-center gap-2 rounded-2xl bg-white/85 px-4 py-4 shadow-sm backdrop-blur-sm">
       <p className="text-xs font-semibold text-gray-500">내가 모은 카드 ({myCards.length}개)</p>
       <div className="flex flex-wrap justify-center gap-3">
         {myCards.map((c, i) => (
@@ -346,54 +352,58 @@ export default function PlayPage({
   if (room?.status === "playing" && myCard) {
     if (!centerCard) {
       return (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-          <p className="text-sm text-gray-500">방 코드 {roomCode}</p>
-          <h1 className="text-xl font-bold">선생님이 첫 카드를 꺼내길 기다리는 중입니다...</h1>
-          <div className="mt-4">
-            <p className="mb-1 text-xs text-gray-400">내 카드</p>
-            <DobbleCard symbols={myCard.symbols} cardId={myCard.cardId} size={220} />
+        <div className="bg-play-screen flex flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center">
+          <div className="flex flex-col items-center gap-4 rounded-2xl bg-white/85 px-8 py-8 shadow-lg backdrop-blur-sm">
+            <p className="text-sm text-gray-500">방 코드 {roomCode}</p>
+            <h1 className="text-xl font-bold">선생님이 첫 카드를 꺼내길 기다리는 중입니다...</h1>
+            <div className="mt-2">
+              <p className="mb-1 text-xs text-gray-400">내 카드</p>
+              <DobbleCard symbols={myCard.symbols} cardId={myCard.cardId} size={220} />
+            </div>
           </div>
         </div>
       );
     }
 
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-8">
+      <div className="bg-play-screen flex flex-1 flex-col items-center justify-center gap-6 px-6 py-8">
         {room.round_phase === "matching" && (
           <>
             <div className={`flex flex-col items-center gap-8 ${matchWrongFlash ? "animate-pulse" : ""}`}>
               <div className="flex flex-col items-center gap-1">
-                <p className="text-xs font-semibold text-gray-400">내 카드</p>
+                <p className="text-xs font-semibold text-gray-100 drop-shadow">내 카드</p>
                 <DobbleCard
                   symbols={myCard.symbols}
                   cardId={myCard.cardId}
                   size={240}
-                  onSymbolClick={handleMatchClick}
+                  onSymbolClick={hasAttemptedMatch ? undefined : handleMatchClick}
                 />
               </div>
               <div className="flex items-center gap-3">
                 <CardStackDecoration size={72} />
                 <div key={centerCard.cardId} className="deal-card-animate flex flex-col items-center gap-1">
-                  <p className="text-xs font-semibold text-gray-400">중앙 카드</p>
+                  <p className="text-xs font-semibold text-gray-100 drop-shadow">중앙 카드</p>
                   <DobbleCard
                     symbols={centerCard.symbols}
                     cardId={centerCard.cardId}
                     size={240}
-                    onSymbolClick={handleMatchClick}
+                    onSymbolClick={hasAttemptedMatch ? undefined : handleMatchClick}
                   />
                 </div>
               </div>
             </div>
-            <p className="text-sm text-gray-500">
+            <p className="rounded-full bg-white/85 px-4 py-2 text-sm text-gray-600 shadow-sm backdrop-blur-sm">
               {matchWrongFlash
-                ? "아직 아니에요! 다시 찾아보세요."
-                : "내 카드와 중앙 카드에 공통으로 있는 기호를 찾아 눌러보세요!"}
+                ? "아쉽지만 오답이에요! 다음 카드를 기다려주세요."
+                : hasAttemptedMatch
+                  ? "이미 시도했습니다. 다른 학생이 먼저 맞히면 라운드가 종료됩니다."
+                  : "내 카드와 중앙 카드에 공통으로 있는 기호를 찾아 눌러보세요! (기회는 한 번뿐이에요)"}
             </p>
           </>
         )}
 
         {room.round_phase === "priority_answering" && commonSymbol && isPriorityMine && (
-          <div className="w-full max-w-sm text-center">
+          <div className="w-full max-w-sm rounded-2xl bg-white/90 p-6 text-center shadow-lg backdrop-blur-sm">
             <p className="text-sm font-semibold text-amber-700">
               우선권 획득! {remainingSec ?? "-"}초 안에 답하세요
             </p>
@@ -403,7 +413,7 @@ export default function PlayPage({
         )}
 
         {room.round_phase === "priority_answering" && commonSymbol && !isPriorityMine && (
-          <div className="max-w-sm text-center">
+          <div className="max-w-sm rounded-2xl bg-white/90 p-6 text-center shadow-lg backdrop-blur-sm">
             <p className="text-lg font-bold">{priorityPlayerNickname ?? "누군가"}님이 우선권을 얻어 답변 중입니다</p>
             <p className="mt-1 text-sm text-gray-500">{remainingSec ?? "-"}초 후 전체에게 공개됩니다</p>
             {showHint && (
@@ -413,14 +423,14 @@ export default function PlayPage({
         )}
 
         {room.round_phase === "open_answering" && commonSymbol && isPriorityMine && (
-          <div className="max-w-sm text-center">
+          <div className="max-w-sm rounded-2xl bg-white/90 p-6 text-center shadow-lg backdrop-blur-sm">
             <p className="text-sm font-semibold text-gray-500">이미 우선권 답변을 시도했습니다</p>
             <p className="mt-2 text-gray-600">다른 학생이 맞히면 이번 라운드가 종료됩니다.</p>
           </div>
         )}
 
         {room.round_phase === "open_answering" && commonSymbol && !isPriorityMine && (
-          <div className="w-full max-w-sm text-center">
+          <div className="w-full max-w-sm rounded-2xl bg-white/90 p-6 text-center shadow-lg backdrop-blur-sm">
             <p className="text-sm font-semibold text-red-700">전체 공개! 먼저 맞히면 카드를 획득합니다</p>
             <h2 className="mt-2 text-lg font-bold">{commonSymbol.question_text}</h2>
             {renderChoices()}
@@ -428,7 +438,7 @@ export default function PlayPage({
         )}
 
         {room.round_phase === "resolved" && commonSymbol && (
-          <div className="max-w-sm text-center">
+          <div className="max-w-sm rounded-2xl bg-white/90 p-6 text-center shadow-lg backdrop-blur-sm">
             <p className="text-lg font-bold">
               {currentRoundClaim ? `${currentRoundClaim.player_nickname}님 정답!` : "이번 라운드 종료"}
             </p>
@@ -446,15 +456,17 @@ export default function PlayPage({
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-      <p className="text-sm text-gray-500">방 코드 {roomCode}</p>
-      <h1 className="text-2xl font-bold">
-        {session ? `${session.nickname}님, 대기 중입니다` : "대기 중..."}
-      </h1>
-      <p className="text-gray-600">
-        {playerCount === null ? "참여자 수 확인 중..." : `현재 ${playerCount}명 참여 중`}
-      </p>
-      <p className="text-sm text-gray-400">선생님이 게임을 시작하면 자동으로 화면이 전환됩니다.</p>
+    <div className="bg-waiting-room flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="flex flex-col items-center gap-4 rounded-2xl bg-white/85 px-8 py-8 shadow-lg backdrop-blur-sm">
+        <p className="text-sm text-gray-500">방 코드 {roomCode}</p>
+        <h1 className="text-2xl font-bold">
+          {session ? `${session.nickname}님, 대기 중입니다` : "대기 중..."}
+        </h1>
+        <p className="text-gray-600">
+          {playerCount === null ? "참여자 수 확인 중..." : `현재 ${playerCount}명 참여 중`}
+        </p>
+        <p className="text-sm text-gray-400">선생님이 게임을 시작하면 자동으로 화면이 전환됩니다.</p>
+      </div>
     </div>
   );
 }

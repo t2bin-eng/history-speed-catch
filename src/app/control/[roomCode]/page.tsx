@@ -189,7 +189,7 @@ export default function ControlPage({
             type="button"
             onClick={handleStart}
             disabled={busy}
-            className="flex h-11 items-center justify-center rounded-full bg-foreground px-6 text-background disabled:opacity-50"
+            className="flex h-11 items-center justify-center rounded-full border-2 border-gray-900 bg-foreground px-6 text-background shadow-sm disabled:opacity-50"
           >
             게임 시작
           </button>
@@ -200,7 +200,7 @@ export default function ControlPage({
               type="button"
               onClick={handleRevealNext}
               disabled={busy}
-              className="flex h-11 items-center justify-center rounded-full bg-foreground px-6 text-background disabled:opacity-50"
+              className="flex h-11 items-center justify-center rounded-full border-2 border-gray-900 bg-foreground px-6 text-background shadow-sm disabled:opacity-50"
             >
               카드 제시 ({room.current_center_card_id ? room.current_card_pair_index + 1 : "첫 장"})
             </button>
@@ -208,7 +208,7 @@ export default function ControlPage({
               type="button"
               onClick={handleEnd}
               disabled={busy}
-              className="flex h-11 items-center justify-center rounded-full border border-black/[.15] px-6 disabled:opacity-50"
+              className="flex h-11 items-center justify-center rounded-full border-2 border-gray-400 px-6 shadow-sm disabled:opacity-50"
             >
               게임 종료
             </button>
@@ -219,7 +219,7 @@ export default function ControlPage({
             <p className="text-lg font-semibold">게임이 종료되었습니다.</p>
             <Link
               href={`/result/${roomCode}`}
-              className="flex h-10 items-center justify-center rounded-full bg-foreground px-5 text-sm text-background"
+              className="flex h-10 items-center justify-center rounded-full border-2 border-gray-900 bg-foreground px-5 text-sm text-background shadow-sm"
             >
               결과 보기
             </Link>
