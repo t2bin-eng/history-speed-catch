@@ -416,6 +416,10 @@ export default function PlayPage({
           <div className="max-w-sm rounded-2xl bg-white/90 p-6 text-center shadow-lg backdrop-blur-sm">
             <p className="text-lg font-bold">{priorityPlayerNickname ?? "누군가"}님이 우선권을 얻어 답변 중입니다</p>
             <p className="mt-1 text-sm text-gray-500">{remainingSec ?? "-"}초 후 전체에게 공개됩니다</p>
+            <div className="mt-4 rounded-lg bg-gray-50 px-4 py-3 text-left">
+              <p className="text-xs font-semibold text-gray-400">문제 미리보기 (선택지는 아직 비공개)</p>
+              <p className="mt-1 text-sm font-medium text-gray-700">{commonSymbol.question_text}</p>
+            </div>
             {showHint && (
               <p className="mt-4 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-800">힌트: {commonSymbol.hint}</p>
             )}

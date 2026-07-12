@@ -61,7 +61,7 @@ export function findCommonSymbolId(pair: [CardWithSymbols, CardWithSymbols]): st
   return common.id;
 }
 
-export const PRIORITY_WINDOW_MS = 50_000;
+export const PRIORITY_WINDOW_MS = 35_000;
 export const HINT_REVEAL_MS = 25_000;
 const GOLDEN_ROUND_INTERVAL = 5;
 const MAX_STREAK_BONUS = 3;
