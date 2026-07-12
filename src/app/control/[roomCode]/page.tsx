@@ -198,8 +198,8 @@ export default function ControlPage({
 
       <div>
         <h2 className="mb-2 text-lg font-semibold">참여 학생 ({players.length}명)</h2>
-        <div className="overflow-hidden rounded-md border">
-          <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full min-w-[320px] text-left text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-2">순위</th>

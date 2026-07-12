@@ -120,8 +120,8 @@ export default function ResultPage({
 
       <div>
         <h2 className="mb-2 text-lg font-semibold">전체 랭킹</h2>
-        <div className="overflow-hidden rounded-md border">
-          <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full min-w-[420px] text-left text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-2">순위</th>
