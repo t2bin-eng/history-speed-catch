@@ -6,6 +6,7 @@ import { getRoomByCode } from "@/lib/rooms";
 import { getCurrentCardPair, type CardWithSymbols } from "@/lib/game";
 import type { Player, Room } from "@/types";
 import DobbleCard from "@/components/DobbleCard";
+import RoomQrCode from "@/components/RoomQrCode";
 
 export default function TvPage({ params }: { params: Promise<{ roomCode: string }> }) {
   const { roomCode } = use(params);
@@ -93,10 +94,13 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 px-10 py-8">
-      <header className="flex items-center justify-between">
-        <p className="text-3xl font-bold tracking-wide">
-          방 코드 <span className="tracking-widest">{roomCode}</span>
-        </p>
+      <header className="flex items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <RoomQrCode roomCode={roomCode} size={100} />
+          <p className="text-3xl font-bold tracking-wide">
+            방 코드 <span className="tracking-widest">{roomCode}</span>
+          </p>
+        </div>
         <p className="text-2xl text-gray-600">참여 인원 {players.length}명</p>
       </header>
 

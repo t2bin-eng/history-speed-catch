@@ -65,3 +65,53 @@ export function parseSymbolCsv(csvText: string): ParseSymbolCsvResult {
 
   return { rows, errors };
 }
+
+const TEMPLATE_EXAMPLE_ROWS: SymbolCsvRow[] = [
+  {
+    SymbolID: "1",
+    Label: "세종대왕",
+    Unit: "조선",
+    SubUnit: "인물",
+    Description: "훈민정음을 창제한 조선의 성군",
+    Hint: "4대 왕",
+    MemoryHook: "세종=한글",
+  },
+  {
+    SymbolID: "2",
+    Label: "임진왜란",
+    Unit: "조선",
+    SubUnit: "사건",
+    Description: "조선을 뒤흔든 7년의 전쟁",
+    Hint: "1592년",
+    MemoryHook: "임진=1592",
+  },
+  {
+    SymbolID: "3",
+    Label: "훈민정음",
+    Unit: "조선",
+    SubUnit: "유물",
+    Description: "백성을 가르치는 바른 소리",
+    Hint: "28자모",
+    MemoryHook: "훈민=백성가르침",
+  },
+];
+
+/**
+ * 예시 3행이 포함된 빈 템플릿 CSV. 이대로 업로드하면 카드 세트가 만들어질 수 없는
+ * 개수(3개)라 에러가 나는 게 정상 — 참고용 형식이지 완성된 덱이 아니다.
+ * 지원 개수(7, 13, 31, 57 등)까지 행을 채우거나 지운 뒤 업로드해야 한다.
+ */
+export function buildSymbolCsvTemplate(): string {
+  return Papa.unparse(
+    TEMPLATE_EXAMPLE_ROWS.map((row) => ({
+      SymbolID: row.SymbolID,
+      Label: row.Label,
+      Unit: row.Unit,
+      SubUnit: row.SubUnit,
+      ImageURL: row.ImageURL ?? "",
+      Description: row.Description,
+      Hint: row.Hint,
+      MemoryHook: row.MemoryHook,
+    }))
+  );
+}

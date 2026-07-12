@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { joinRoom } from "@/lib/rooms";
 import { savePlayerSession } from "@/lib/storage";
 
-export default function StudentPage() {
+function StudentForm() {
   const router = useRouter();
-  const [roomCode, setRoomCode] = useState("");
+  const searchParams = useSearchParams();
+  const [roomCode, setRoomCode] = useState(() => searchParams.get("code") ?? "");
   const [nickname, setNickname] = useState("");
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,5 +57,13 @@ export default function StudentPage() {
         {error && <p className="text-sm text-red-700">{error}</p>}
       </form>
     </div>
+  );
+}
+
+export default function StudentPage() {
+  return (
+    <Suspense fallback={null}>
+      <StudentForm />
+    </Suspense>
   );
 }

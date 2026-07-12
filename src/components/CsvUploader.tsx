@@ -1,11 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { parseSymbolCsv } from "@/lib/csv";
+import { parseSymbolCsv, buildSymbolCsvTemplate } from "@/lib/csv";
 import { generateDobbleDeck } from "@/lib/dobbleDeck";
 import { createRoom } from "@/lib/rooms";
 import type { SymbolCsvRow } from "@/types";
 import SymbolTile from "./SymbolTile";
+import RoomQrCode from "./RoomQrCode";
+
+function handleDownloadTemplate() {
+  const csv = buildSymbolCsvTemplate();
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "기호_CSV_템플릿.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function CsvUploader() {
   const [rows, setRows] = useState<SymbolCsvRow[]>([]);
@@ -49,6 +61,20 @@ export default function CsvUploader() {
 
   return (
     <div className="flex flex-col gap-6">
+      <div>
+        <button
+          type="button"
+          onClick={handleDownloadTemplate}
+          className="flex h-10 items-center justify-center rounded-full border border-black/[.15] px-5 text-sm"
+        >
+          기호 CSV 템플릿 다운로드
+        </button>
+        <p className="mt-2 text-xs text-gray-500">
+          예시 3개 행이 들어있는 빈 양식입니다. 형식을 참고해 내용을 채우거나 지운 뒤,
+          전체 기호 개수가 7 · 13(권장) · 31 · 57개가 되도록 맞춰서 업로드하세요.
+        </p>
+      </div>
+
       <label className="flex flex-col gap-2">
         <span className="text-sm font-medium">기호 CSV 업로드</span>
         <input
@@ -130,6 +156,12 @@ export default function CsvUploader() {
             <div className="mt-6 rounded-md border border-green-300 bg-green-50 p-4">
               <p className="text-sm text-green-800">방이 생성되었습니다. 학생들에게 아래 방 코드를 알려주세요.</p>
               <p className="mt-1 text-3xl font-bold tracking-widest text-green-900">{roomCode}</p>
+              <div className="mt-4 flex items-center gap-4">
+                <RoomQrCode roomCode={roomCode} size={120} />
+                <p className="text-sm text-green-800">
+                  QR코드를 스캔하면 방 코드 입력 없이 바로 닉네임만 쓰고 입장할 수 있습니다.
+                </p>
+              </div>
               <div className="mt-4 flex flex-wrap gap-3">
                 <a
                   href={`/tv/${roomCode}`}
