@@ -80,6 +80,19 @@ export async function startGame(roomId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+export async function nextCard(roomId: string, nextCardPairIndex: number): Promise<void> {
+  const { error } = await supabase
+    .from("rooms")
+    .update({ current_card_pair_index: nextCardPairIndex })
+    .eq("id", roomId);
+  if (error) throw new Error(error.message);
+}
+
+export async function endGame(roomId: string): Promise<void> {
+  const { error } = await supabase.from("rooms").update({ status: "finished" }).eq("id", roomId);
+  if (error) throw new Error(error.message);
+}
+
 export async function joinRoom(
   roomCode: string,
   nickname: string

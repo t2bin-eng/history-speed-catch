@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getPlayerSession, type PlayerSession } from "@/lib/storage";
 import { getCurrentCardPair, findCommonSymbolId, submitClaim, type CardWithSymbols } from "@/lib/game";
-import type { Room } from "@/types";
+import type { Room, Symbol } from "@/types";
 import DobbleCard from "@/components/DobbleCard";
 
 export default function PlayPage({
@@ -22,7 +22,11 @@ export default function PlayPage({
   const [room, setRoom] = useState<Room | null>(null);
   const [pair, setPair] = useState<[CardWithSymbols, CardWithSymbols] | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ cardPairIndex: number; isCorrect: boolean } | null>(null);
+  const [feedback, setFeedback] = useState<{
+    cardPairIndex: number;
+    isCorrect: boolean;
+    symbol?: Symbol;
+  } | null>(null);
 
   useEffect(() => {
     if (!session) router.replace("/student");
@@ -87,6 +91,8 @@ export default function PlayPage({
 
   async function handleSymbolClick(symbolId: string) {
     if (!session || !room || !pair || submitting) return;
+    const symbol = [...pair[0].symbols, ...pair[1].symbols].find((s) => s.id === symbolId);
+    if (!symbol) return;
     setSubmitting(true);
     try {
       const correctSymbolId = findCommonSymbolId(pair);
@@ -95,10 +101,14 @@ export default function PlayPage({
         room.id,
         room.current_card_pair_index,
         session.playerId,
-        symbolId,
+        symbol,
         isCorrectGuess
       );
-      setFeedback({ cardPairIndex: room.current_card_pair_index, isCorrect: result.isCorrect });
+      setFeedback({
+        cardPairIndex: room.current_card_pair_index,
+        isCorrect: result.isCorrect,
+        symbol: result.symbol,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -112,9 +122,17 @@ export default function PlayPage({
           <DobbleCard symbols={pair[1].symbols} size={280} onSymbolClick={handleSymbolClick} />
         </div>
         {feedback && feedback.cardPairIndex === room.current_card_pair_index && (
-          <p className={feedback.isCorrect ? "text-lg font-bold text-green-700" : "text-lg font-bold text-red-700"}>
-            {feedback.isCorrect ? "정답입니다!" : "오답입니다. 다시 시도해보세요."}
-          </p>
+          <div className="max-w-sm text-center">
+            <p className={feedback.isCorrect ? "text-lg font-bold text-green-700" : "text-lg font-bold text-red-700"}>
+              {feedback.isCorrect ? "정답입니다!" : "오답입니다. 다시 시도해보세요."}
+            </p>
+            {feedback.isCorrect && feedback.symbol && (
+              <div className="mt-2 text-sm text-gray-700">
+                <p>{feedback.symbol.description}</p>
+                <p className="mt-1 text-gray-500">{feedback.symbol.memory_hook}</p>
+              </div>
+            )}
+          </div>
         )}
       </div>
     );

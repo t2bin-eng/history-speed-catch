@@ -58,6 +58,16 @@ export function findCommonSymbolId(pair: [CardWithSymbols, CardWithSymbols]): st
 
 export interface ClaimResult {
   isCorrect: boolean;
+  symbol?: Symbol;
+}
+
+async function incrementScore(playerId: string): Promise<void> {
+  const { data: player } = await supabase.from("players").select("score").eq("id", playerId).single();
+  if (!player) return;
+  await supabase
+    .from("players")
+    .update({ score: player.score + 1 })
+    .eq("id", playerId);
 }
 
 /**
@@ -65,12 +75,13 @@ export interface ClaimResult {
  * DB에 partial unique index가 걸려 있다(schema.sql). 정답을 맞혔다고 판단되면 우선
  * is_correct=true로 insert를 시도하고, 이미 다른 학생이 먼저 맞혀 unique violation(23505)이
  * 나면 오답으로 재기록한다 — "최초 클릭자만 정답" 규칙을 DB 제약으로 안전하게 강제한다.
+ * 정답 처리된 경우에만 점수를 +1 하고, 해설 표시에 쓸 symbol을 함께 반환한다.
  */
 export async function submitClaim(
   roomId: string,
   cardPairIndex: number,
   playerId: string,
-  symbolId: string,
+  symbol: Symbol,
   isCorrectGuess: boolean
 ): Promise<ClaimResult> {
   if (isCorrectGuess) {
@@ -78,10 +89,13 @@ export async function submitClaim(
       room_id: roomId,
       card_pair_index: cardPairIndex,
       player_id: playerId,
-      symbol_id: symbolId,
+      symbol_id: symbol.id,
       is_correct: true,
     });
-    if (!error) return { isCorrect: true };
+    if (!error) {
+      await incrementScore(playerId);
+      return { isCorrect: true, symbol };
+    }
     if (error.code !== "23505") throw new Error(error.message);
     // 이미 다른 학생이 먼저 정답 처리됨 → 오답으로 기록하고 아래로 진행
   }
@@ -90,7 +104,7 @@ export async function submitClaim(
     room_id: roomId,
     card_pair_index: cardPairIndex,
     player_id: playerId,
-    symbol_id: symbolId,
+    symbol_id: symbol.id,
     is_correct: false,
   });
   if (fallbackError) throw new Error(fallbackError.message);

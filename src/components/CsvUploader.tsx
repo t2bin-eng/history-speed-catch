@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { parseSymbolCsv } from "@/lib/csv";
 import { generateDobbleDeck } from "@/lib/dobbleDeck";
-import { createRoom, startGame } from "@/lib/rooms";
+import { createRoom } from "@/lib/rooms";
 import type { SymbolCsvRow } from "@/types";
 import SymbolTile from "./SymbolTile";
 
@@ -13,36 +13,18 @@ export default function CsvUploader() {
   const [deck, setDeck] = useState<SymbolCsvRow[][] | null>(null);
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [roomError, setRoomError] = useState<string | null>(null);
-  const [roomId, setRoomId] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
-  const [started, setStarted] = useState(false);
 
   async function handleCreateRoom() {
     setCreatingRoom(true);
     setRoomError(null);
     try {
-      const { roomId, roomCode } = await createRoom(rows);
-      setRoomId(roomId);
+      const { roomCode } = await createRoom(rows);
       setRoomCode(roomCode);
     } catch (e) {
       setRoomError(e instanceof Error ? e.message : "방 생성 중 오류가 발생했습니다.");
     } finally {
       setCreatingRoom(false);
-    }
-  }
-
-  async function handleStartGame() {
-    if (!roomId) return;
-    setStarting(true);
-    setRoomError(null);
-    try {
-      await startGame(roomId);
-      setStarted(true);
-    } catch (e) {
-      setRoomError(e instanceof Error ? e.message : "게임 시작 중 오류가 발생했습니다.");
-    } finally {
-      setStarting(false);
     }
   }
 
@@ -157,18 +139,15 @@ export default function CsvUploader() {
                 >
                   TV 화면 열기
                 </a>
-                <button
-                  type="button"
-                  onClick={handleStartGame}
-                  disabled={starting || started}
-                  className="flex h-10 items-center justify-center rounded-full bg-foreground px-5 text-sm text-background disabled:opacity-50"
+                <a
+                  href={`/control/${roomCode}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-10 items-center justify-center rounded-full bg-foreground px-5 text-sm text-background"
                 >
-                  {started ? "게임 시작됨" : starting ? "시작 중..." : "게임 시작"}
-                </button>
+                  관제 화면 열기
+                </a>
               </div>
-              <p className="mt-2 text-xs text-green-700">
-                (임시 버튼 — 정식 교사 관제 화면은 Sprint 6에서 만듭니다)
-              </p>
             </div>
           ) : (
             <button
