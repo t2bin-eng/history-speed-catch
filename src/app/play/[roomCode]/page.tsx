@@ -15,9 +15,10 @@ export default function PlayPage({
 }) {
   const { roomCode } = use(params);
   const router = useRouter();
-  const [session] = useState<PlayerSession | null>(() =>
-    typeof window === "undefined" ? null : getPlayerSession(roomCode)
-  );
+  // localStorage는 서버에 없으므로 첫 렌더는 항상 null로 맞추고(hydration mismatch 방지),
+  // 마운트 후 이펙트에서 읽어온다.
+  const [session, setSession] = useState<PlayerSession | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [pair, setPair] = useState<[CardWithSymbols, CardWithSymbols] | null>(null);
@@ -29,8 +30,20 @@ export default function PlayPage({
   } | null>(null);
 
   useEffect(() => {
-    if (!session) router.replace("/student");
-  }, [session, router]);
+    // localStorage는 서버에 없는 값이라 렌더 중에는 읽을 수 없다 — 마운트 후
+    // 이펙트에서 읽어 hydration mismatch를 피하는, 클라이언트 전용 데이터의 표준 패턴이다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSession(getPlayerSession(roomCode));
+    setSessionChecked(true);
+  }, [roomCode]);
+
+  useEffect(() => {
+    if (sessionChecked && !session) router.replace("/student");
+  }, [sessionChecked, session, router]);
+
+  useEffect(() => {
+    if (room?.status === "finished") router.replace(`/result/${roomCode}`);
+  }, [room, roomCode, router]);
 
   useEffect(() => {
     if (!session) return;

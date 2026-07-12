@@ -56,10 +56,21 @@ create unique index if not exists card_claims_one_correct_per_pair
   on card_claims (room_id, card_pair_index)
   where is_correct = true;
 
+-- 결과 화면의 "반응 속도" 계산용: 각 카드 쌍이 실제로 화면에 뜬 시각을 기록한다
+-- (게임 시작/다음 카드 진행 시 기록). claimed_at - started_at으로 반응 시간을 구한다.
+create table if not exists round_starts (
+  id uuid primary key default gen_random_uuid(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  card_pair_index integer not null,
+  started_at timestamptz not null default now(),
+  unique (room_id, card_pair_index)
+);
+
 create index if not exists idx_symbols_room_id on symbols(room_id);
 create index if not exists idx_cards_room_id on cards(room_id);
 create index if not exists idx_players_room_id on players(room_id);
 create index if not exists idx_card_claims_room_id on card_claims(room_id);
+create index if not exists idx_round_starts_room_id on round_starts(room_id);
 
 -- Realtime 구독 대상 (§7: TV/학생/교사 화면이 각각 알아서 갱신)
 alter publication supabase_realtime add table rooms;
@@ -73,3 +84,4 @@ alter table symbols disable row level security;
 alter table cards disable row level security;
 alter table players disable row level security;
 alter table card_claims disable row level security;
+alter table round_starts disable row level security;

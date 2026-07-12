@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { getRoomByCode, startGame, nextCard, endGame } from "@/lib/rooms";
 import { getCardCount } from "@/lib/game";
@@ -180,7 +181,17 @@ export default function ControlPage({
             </button>
           </>
         )}
-        {room.status === "finished" && <p className="text-lg font-semibold">게임이 종료되었습니다.</p>}
+        {room.status === "finished" && (
+          <div className="flex items-center gap-3">
+            <p className="text-lg font-semibold">게임이 종료되었습니다.</p>
+            <Link
+              href={`/result/${roomCode}`}
+              className="flex h-10 items-center justify-center rounded-full bg-foreground px-5 text-sm text-background"
+            >
+              결과 보기
+            </Link>
+          </div>
+        )}
       </div>
 
       {error && <p className="text-sm text-red-700">{error}</p>}

@@ -72,12 +72,22 @@ export async function getRoomByCode(roomCode: string): Promise<Room | null> {
   return data as Room | null;
 }
 
+async function recordRoundStart(roomId: string, cardPairIndex: number): Promise<void> {
+  await supabase
+    .from("round_starts")
+    .upsert(
+      { room_id: roomId, card_pair_index: cardPairIndex, started_at: new Date().toISOString() },
+      { onConflict: "room_id,card_pair_index" }
+    );
+}
+
 export async function startGame(roomId: string): Promise<void> {
   const { error } = await supabase
     .from("rooms")
     .update({ status: "playing", current_card_pair_index: 0 })
     .eq("id", roomId);
   if (error) throw new Error(error.message);
+  await recordRoundStart(roomId, 0);
 }
 
 export async function nextCard(roomId: string, nextCardPairIndex: number): Promise<void> {
@@ -86,6 +96,7 @@ export async function nextCard(roomId: string, nextCardPairIndex: number): Promi
     .update({ current_card_pair_index: nextCardPairIndex })
     .eq("id", roomId);
   if (error) throw new Error(error.message);
+  await recordRoundStart(roomId, nextCardPairIndex);
 }
 
 export async function endGame(roomId: string): Promise<void> {
