@@ -9,6 +9,10 @@ create table if not exists rooms (
   room_code text unique not null,
   status text not null default 'waiting' check (status in ('waiting', 'playing', 'finished')),
   current_card_pair_index integer not null default 0,
+  round_phase text not null default 'matching'
+    check (round_phase in ('matching', 'priority_answering', 'open_answering', 'resolved')),
+  priority_player_id uuid,
+  priority_started_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -21,7 +25,15 @@ create table if not exists symbols (
   image_url text,
   description text not null default '',
   hint text not null default '',
-  memory_hook text not null default ''
+  memory_hook text not null default '',
+  icon_name text,
+  question_text text not null default '',
+  choice_a text not null default '',
+  choice_b text not null default '',
+  choice_c text not null default '',
+  choice_d text not null default '',
+  correct_choice text check (correct_choice in ('a', 'b', 'c', 'd')),
+  difficulty integer not null default 1 check (difficulty between 1 and 3)
 );
 
 create table if not exists cards (
@@ -37,6 +49,7 @@ create table if not exists players (
   room_id uuid not null references rooms(id) on delete cascade,
   nickname text not null,
   score integer not null default 0,
+  streak integer not null default 0,
   joined_at timestamptz not null default now()
 );
 
@@ -66,16 +79,36 @@ create table if not exists round_starts (
   unique (room_id, card_pair_index)
 );
 
+-- 우선권 독점 구간이 풀려서(오답/시간초과) 전원에게 공개된 뒤 "누가 문제를 맞혔는지"
+-- 기록한다. card_claims(매칭 판정)와는 별개로 "정답 판정"을 위한 테이블 — 같은
+-- race condition 방지 패턴(partial unique index)을 그대로 재사용한다.
+create table if not exists answer_claims (
+  id uuid primary key default gen_random_uuid(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  card_pair_index integer not null,
+  player_id uuid not null references players(id) on delete cascade,
+  symbol_id uuid not null references symbols(id) on delete cascade,
+  chosen_choice text not null check (chosen_choice in ('a', 'b', 'c', 'd')),
+  is_correct boolean not null default false,
+  claimed_at timestamptz not null default now()
+);
+
+create unique index if not exists answer_claims_one_correct_per_pair
+  on answer_claims (room_id, card_pair_index)
+  where is_correct = true;
+
 create index if not exists idx_symbols_room_id on symbols(room_id);
 create index if not exists idx_cards_room_id on cards(room_id);
 create index if not exists idx_players_room_id on players(room_id);
 create index if not exists idx_card_claims_room_id on card_claims(room_id);
 create index if not exists idx_round_starts_room_id on round_starts(room_id);
+create index if not exists idx_answer_claims_room_id on answer_claims(room_id);
 
 -- Realtime 구독 대상 (§7: TV/학생/교사 화면이 각각 알아서 갱신)
 alter publication supabase_realtime add table rooms;
 alter publication supabase_realtime add table players;
 alter publication supabase_realtime add table card_claims;
+alter publication supabase_realtime add table answer_claims;
 
 -- Supabase는 새 테이블에 기본적으로 RLS를 켜두므로, 정책 없이 anon key로
 -- 쓰기가 전부 막힌다. MVP는 로그인 없는 방 코드 방식이라 명시적으로 끈다.
@@ -85,3 +118,4 @@ alter table cards disable row level security;
 alter table players disable row level security;
 alter table card_claims disable row level security;
 alter table round_starts disable row level security;
+alter table answer_claims disable row level security;

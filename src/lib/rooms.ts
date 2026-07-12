@@ -1,14 +1,30 @@
 import { supabase } from "./supabaseClient";
 import { generateDobbleDeck } from "./dobbleDeck";
+import { ICON_NAMES } from "./icons";
 import type { Room, SymbolCsvRow } from "@/types";
 
 function generateRoomCode(): string {
   return String(Math.floor(10000 + Math.random() * 90000)); // 5자리
 }
 
+function shuffled<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 export async function createRoom(
   symbolRows: SymbolCsvRow[]
 ): Promise<{ roomId: string; roomCode: string }> {
+  if (symbolRows.length > ICON_NAMES.length) {
+    throw new Error(
+      `기호가 ${symbolRows.length}개인데 아이콘 풀은 ${ICON_NAMES.length}개뿐이라 중복 없이 배정할 수 없습니다.`
+    );
+  }
+
   let roomCode = generateRoomCode();
   for (let attempt = 0; attempt < 5; attempt++) {
     const { data: existing } = await supabase
@@ -22,15 +38,24 @@ export async function createRoom(
 
   const { data: room, error: roomError } = await supabase
     .from("rooms")
-    .insert({ room_code: roomCode, status: "waiting", current_card_pair_index: 0 })
+    .insert({
+      room_code: roomCode,
+      status: "waiting",
+      current_card_pair_index: 0,
+      round_phase: "matching",
+    })
     .select()
     .single();
   if (roomError || !room) throw new Error(roomError?.message ?? "방 생성에 실패했습니다.");
 
+  // 아이콘은 매칭의 유일한 시각적 단서라 같은 방 안에서 절대 중복되면 안 된다 —
+  // 풀을 셔플해서 앞에서부터 하나씩 나눠준다(색상과 달리 중복 허용 불가).
+  const icons = shuffled(ICON_NAMES).slice(0, symbolRows.length);
+
   const { data: insertedSymbols, error: symbolsError } = await supabase
     .from("symbols")
     .insert(
-      symbolRows.map((row) => ({
+      symbolRows.map((row, i) => ({
         room_id: room.id,
         label: row.Label,
         unit: row.Unit,
@@ -39,6 +64,14 @@ export async function createRoom(
         description: row.Description,
         hint: row.Hint,
         memory_hook: row.MemoryHook,
+        icon_name: icons[i],
+        question_text: row.Question,
+        choice_a: row.ChoiceA,
+        choice_b: row.ChoiceB,
+        choice_c: row.ChoiceC,
+        choice_d: row.ChoiceD,
+        correct_choice: row.CorrectChoice,
+        difficulty: row.Difficulty,
       }))
     )
     .select();
@@ -81,10 +114,18 @@ async function recordRoundStart(roomId: string, cardPairIndex: number): Promise<
     );
 }
 
+function resetRoundState() {
+  return {
+    round_phase: "matching" as const,
+    priority_player_id: null,
+    priority_started_at: null,
+  };
+}
+
 export async function startGame(roomId: string): Promise<void> {
   const { error } = await supabase
     .from("rooms")
-    .update({ status: "playing", current_card_pair_index: 0 })
+    .update({ status: "playing", current_card_pair_index: 0, ...resetRoundState() })
     .eq("id", roomId);
   if (error) throw new Error(error.message);
   await recordRoundStart(roomId, 0);
@@ -93,7 +134,7 @@ export async function startGame(roomId: string): Promise<void> {
 export async function nextCard(roomId: string, nextCardPairIndex: number): Promise<void> {
   const { error } = await supabase
     .from("rooms")
-    .update({ current_card_pair_index: nextCardPairIndex })
+    .update({ current_card_pair_index: nextCardPairIndex, ...resetRoundState() })
     .eq("id", roomId);
   if (error) throw new Error(error.message);
   await recordRoundStart(roomId, nextCardPairIndex);
@@ -118,7 +159,7 @@ export async function joinRoom(
 
   const { data: player, error: playerError } = await supabase
     .from("players")
-    .insert({ room_id: room.id, nickname, score: 0 })
+    .insert({ room_id: room.id, nickname, score: 0, streak: 0 })
     .select()
     .single();
   if (playerError || !player) throw new Error(playerError?.message ?? "참가에 실패했습니다.");

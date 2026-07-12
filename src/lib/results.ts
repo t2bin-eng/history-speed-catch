@@ -12,14 +12,16 @@ export interface PlayerResult {
 }
 
 /**
- * 방의 최종 결과를 집계한다.
+ * 방의 최종 결과를 집계한다. "정답"은 이제 도블 매칭이 아니라 매칭 이후의
+ * 역사 문제를 실제로 맞혔는지(answer_claims)로 판단한다 — 이게 진짜 학습 평가 지표다.
  * 반응 속도 = 정답 claim의 claimed_at - 해당 카드 쌍의 round_starts.started_at
+ * (매칭에 걸린 시간 + 문제 풀이 시간을 합친, "그 라운드를 해결하는 데 걸린 총 시간").
  */
 export async function getRoomResults(roomId: string): Promise<PlayerResult[]> {
   const [{ data: players }, { data: claims }, { data: roundStarts }] = await Promise.all([
     supabase.from("players").select("*").eq("room_id", roomId),
     supabase
-      .from("card_claims")
+      .from("answer_claims")
       .select("player_id, card_pair_index, is_correct, claimed_at")
       .eq("room_id", roomId),
     supabase.from("round_starts").select("card_pair_index, started_at").eq("room_id", roomId),

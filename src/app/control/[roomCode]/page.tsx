@@ -4,8 +4,15 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { getRoomByCode, startGame, nextCard, endGame } from "@/lib/rooms";
-import { getCardCount } from "@/lib/game";
+import { getCardCount, getRoomAnswerClaims, type AnswerClaimWithDetails } from "@/lib/game";
 import type { Player, Room } from "@/types";
+
+const PHASE_LABEL: Record<Room["round_phase"], string> = {
+  matching: "매칭 중",
+  priority_answering: "우선권 답변 중",
+  open_answering: "전체 공개",
+  resolved: "라운드 종료",
+};
 
 export default function ControlPage({
   params,
@@ -19,6 +26,7 @@ export default function ControlPage({
   const [cardCount, setCardCount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [answerClaims, setAnswerClaims] = useState<AnswerClaimWithDetails[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -79,6 +87,32 @@ export default function ControlPage({
     return () => {
       active = false;
       supabase.removeChannel(playersChannel);
+    };
+  }, [room]);
+
+  // 획득 로그: 교사가 진행 중 누가 무엇을 맞혔는지 바로 확인할 수 있도록 실시간으로 쌓는다.
+  useEffect(() => {
+    if (!room) return;
+    let active = true;
+
+    async function loadClaims() {
+      const claims = await getRoomAnswerClaims(room!.id);
+      if (active) setAnswerClaims(claims);
+    }
+    loadClaims();
+
+    const channel = supabase
+      .channel(`control-answer-claims-${room.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "answer_claims", filter: `room_id=eq.${room.id}` },
+        () => loadClaims()
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
     };
   }, [room]);
 
@@ -146,6 +180,12 @@ export default function ControlPage({
         <p className="mt-1 text-gray-500">
           방 코드 <span className="font-semibold">{roomCode}</span> · 상태{" "}
           <span className="font-semibold">{room.status}</span>
+          {room.status === "playing" && (
+            <>
+              {" "}
+              · <span className="font-semibold">{PHASE_LABEL[room.round_phase]}</span>
+            </>
+          )}
         </p>
       </div>
 
@@ -219,6 +259,41 @@ export default function ControlPage({
                 <tr>
                   <td colSpan={3} className="px-3 py-4 text-center text-gray-400">
                     아직 참여한 학생이 없습니다.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-2 text-lg font-semibold">획득 로그</h2>
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full min-w-[420px] text-left text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2">라운드</th>
+                <th className="px-3 py-2">획득자</th>
+                <th className="px-3 py-2">기호</th>
+                <th className="px-3 py-2">시각</th>
+              </tr>
+            </thead>
+            <tbody>
+              {answerClaims.map((c) => (
+                <tr key={c.id} className="border-t">
+                  <td className="px-3 py-2">{c.card_pair_index + 1}</td>
+                  <td className="px-3 py-2">{c.player_nickname}</td>
+                  <td className="px-3 py-2">{c.symbol.label}</td>
+                  <td className="px-3 py-2 text-gray-400">
+                    {new Date(c.claimed_at).toLocaleTimeString("ko-KR")}
+                  </td>
+                </tr>
+              ))}
+              {answerClaims.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-3 py-4 text-center text-gray-400">
+                    아직 획득한 카드가 없습니다.
                   </td>
                 </tr>
               )}

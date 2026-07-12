@@ -6,12 +6,17 @@
  */
 
 export type RoomStatus = "waiting" | "playing" | "finished";
+export type RoundPhase = "matching" | "priority_answering" | "open_answering" | "resolved";
+export type Choice = "a" | "b" | "c" | "d";
 
 export interface Room {
   id: string;
   room_code: string;
   status: RoomStatus;
   current_card_pair_index: number;
+  round_phase: RoundPhase;
+  priority_player_id: string | null;
+  priority_started_at: string | null;
   created_at: string;
 }
 
@@ -25,6 +30,14 @@ export interface Symbol {
   description: string;
   hint: string;
   memory_hook: string;
+  icon_name: string | null;
+  question_text: string;
+  choice_a: string;
+  choice_b: string;
+  choice_c: string;
+  choice_d: string;
+  correct_choice: Choice | null;
+  difficulty: number;
 }
 
 export interface Card {
@@ -39,6 +52,7 @@ export interface Player {
   room_id: string;
   nickname: string;
   score: number;
+  streak: number;
   joined_at: string;
 }
 
@@ -48,6 +62,18 @@ export interface CardClaim {
   card_pair_index: number;
   player_id: string;
   symbol_id: string;
+  is_correct: boolean;
+  claimed_at: string;
+}
+
+/** 우선권 독점/개방 구간 모두에서 "문제 정답 시도"를 기록한다. */
+export interface AnswerClaim {
+  id: string;
+  room_id: string;
+  card_pair_index: number;
+  player_id: string;
+  symbol_id: string;
+  chosen_choice: Choice;
   is_correct: boolean;
   claimed_at: string;
 }
@@ -65,4 +91,11 @@ export interface SymbolCsvRow {
   Description: string;
   Hint: string;
   MemoryHook: string;
+  Question: string;
+  ChoiceA: string;
+  ChoiceB: string;
+  ChoiceC: string;
+  ChoiceD: string;
+  CorrectChoice: Choice;
+  Difficulty: number;
 }
