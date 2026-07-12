@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getPlayerSession, type PlayerSession } from "@/lib/storage";
-import { getCurrentCardPair, type CardWithSymbols } from "@/lib/game";
+import { getCurrentCardPair, findCommonSymbolId, submitClaim, type CardWithSymbols } from "@/lib/game";
 import type { Room } from "@/types";
 import DobbleCard from "@/components/DobbleCard";
 
@@ -21,6 +21,8 @@ export default function PlayPage({
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [pair, setPair] = useState<[CardWithSymbols, CardWithSymbols] | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<{ cardPairIndex: number; isCorrect: boolean } | null>(null);
 
   useEffect(() => {
     if (!session) router.replace("/student");
@@ -83,13 +85,37 @@ export default function PlayPage({
     };
   }, [room]);
 
+  async function handleSymbolClick(symbolId: string) {
+    if (!session || !room || !pair || submitting) return;
+    setSubmitting(true);
+    try {
+      const correctSymbolId = findCommonSymbolId(pair);
+      const isCorrectGuess = symbolId === correctSymbolId;
+      const result = await submitClaim(
+        room.id,
+        room.current_card_pair_index,
+        session.playerId,
+        symbolId,
+        isCorrectGuess
+      );
+      setFeedback({ cardPairIndex: room.current_card_pair_index, isCorrect: result.isCorrect });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (room?.status === "playing" && pair) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-8">
         <div className="flex flex-col items-center gap-6">
-          <DobbleCard symbols={pair[0].symbols} size={280} />
-          <DobbleCard symbols={pair[1].symbols} size={280} />
+          <DobbleCard symbols={pair[0].symbols} size={280} onSymbolClick={handleSymbolClick} />
+          <DobbleCard symbols={pair[1].symbols} size={280} onSymbolClick={handleSymbolClick} />
         </div>
+        {feedback && feedback.cardPairIndex === room.current_card_pair_index && (
+          <p className={feedback.isCorrect ? "text-lg font-bold text-green-700" : "text-lg font-bold text-red-700"}>
+            {feedback.isCorrect ? "정답입니다!" : "오답입니다. 다시 시도해보세요."}
+          </p>
+        )}
       </div>
     );
   }

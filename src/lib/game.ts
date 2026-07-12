@@ -48,3 +48,51 @@ export async function getCardCount(roomId: string): Promise<number> {
     .eq("room_id", roomId);
   return count ?? 0;
 }
+
+export function findCommonSymbolId(pair: [CardWithSymbols, CardWithSymbols]): string {
+  const idsA = new Set(pair[0].symbols.map((s) => s.id));
+  const common = pair[1].symbols.find((s) => idsA.has(s.id));
+  if (!common) throw new Error("카드 쌍에 공통 기호가 없습니다.");
+  return common.id;
+}
+
+export interface ClaimResult {
+  isCorrect: boolean;
+}
+
+/**
+ * 판정 로직(§7): is_correct=true는 room_id+card_pair_index 조합당 하나만 존재할 수 있도록
+ * DB에 partial unique index가 걸려 있다(schema.sql). 정답을 맞혔다고 판단되면 우선
+ * is_correct=true로 insert를 시도하고, 이미 다른 학생이 먼저 맞혀 unique violation(23505)이
+ * 나면 오답으로 재기록한다 — "최초 클릭자만 정답" 규칙을 DB 제약으로 안전하게 강제한다.
+ */
+export async function submitClaim(
+  roomId: string,
+  cardPairIndex: number,
+  playerId: string,
+  symbolId: string,
+  isCorrectGuess: boolean
+): Promise<ClaimResult> {
+  if (isCorrectGuess) {
+    const { error } = await supabase.from("card_claims").insert({
+      room_id: roomId,
+      card_pair_index: cardPairIndex,
+      player_id: playerId,
+      symbol_id: symbolId,
+      is_correct: true,
+    });
+    if (!error) return { isCorrect: true };
+    if (error.code !== "23505") throw new Error(error.message);
+    // 이미 다른 학생이 먼저 정답 처리됨 → 오답으로 기록하고 아래로 진행
+  }
+
+  const { error: fallbackError } = await supabase.from("card_claims").insert({
+    room_id: roomId,
+    card_pair_index: cardPairIndex,
+    player_id: playerId,
+    symbol_id: symbolId,
+    is_correct: false,
+  });
+  if (fallbackError) throw new Error(fallbackError.message);
+  return { isCorrect: false };
+}
