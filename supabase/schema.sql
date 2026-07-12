@@ -13,6 +13,8 @@ create table if not exists rooms (
     check (round_phase in ('matching', 'priority_answering', 'open_answering', 'resolved')),
   priority_player_id uuid,
   priority_started_at timestamptz,
+  current_center_card_id uuid,
+  priority_symbol_id uuid,
   created_at timestamptz not null default now()
 );
 
@@ -50,6 +52,7 @@ create table if not exists players (
   nickname text not null,
   score integer not null default 0,
   streak integer not null default 0,
+  card_id uuid references cards(id),
   joined_at timestamptz not null default now()
 );
 
@@ -97,12 +100,25 @@ create unique index if not exists answer_claims_one_correct_per_pair
   on answer_claims (room_id, card_pair_index)
   where is_correct = true;
 
+-- 진짜 도블처럼 학생마다 고정된 개인 카드를 갖고, 교사가 "카드 제시"를 누를 때마다
+-- 중앙 카드가 하나씩 공개된다. 이 테이블은 그 공개 이력을 기록해 다음 카드를 고를 때
+-- "이미 어떤 학생에게 보여준 기호인지" 판단하는 데 쓴다(revealNextCenterCard 참고).
+create table if not exists center_reveals (
+  id uuid primary key default gen_random_uuid(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  round_index integer not null,
+  card_id uuid not null references cards(id) on delete cascade,
+  revealed_at timestamptz not null default now(),
+  unique (room_id, round_index)
+);
+
 create index if not exists idx_symbols_room_id on symbols(room_id);
 create index if not exists idx_cards_room_id on cards(room_id);
 create index if not exists idx_players_room_id on players(room_id);
 create index if not exists idx_card_claims_room_id on card_claims(room_id);
 create index if not exists idx_round_starts_room_id on round_starts(room_id);
 create index if not exists idx_answer_claims_room_id on answer_claims(room_id);
+create index if not exists idx_center_reveals_room_id on center_reveals(room_id);
 
 -- Realtime 구독 대상 (§7: TV/학생/교사 화면이 각각 알아서 갱신)
 alter publication supabase_realtime add table rooms;
@@ -119,3 +135,4 @@ alter table players disable row level security;
 alter table card_claims disable row level security;
 alter table round_starts disable row level security;
 alter table answer_claims disable row level security;
+alter table center_reveals disable row level security;

@@ -8,7 +8,8 @@ import {
   attemptMatch,
   expirePriorityIfNeeded,
   findCommonSymbolId,
-  getCurrentCardPair,
+  getCardWithSymbols,
+  getPlayerCard,
   getRoomAnswerClaims,
   submitAnswer,
   HINT_REVEAL_MS,
@@ -17,7 +18,7 @@ import {
   type CardWithSymbols,
 } from "@/lib/game";
 import type { Choice, Room, Symbol } from "@/types";
-import DobbleCard from "@/components/DobbleCard";
+import DobbleCard, { CardStackDecoration, SymbolIconBadge } from "@/components/DobbleCard";
 
 function choiceText(symbol: Symbol, choice: Choice): string {
   return { a: symbol.choice_a, b: symbol.choice_b, c: symbol.choice_c, d: symbol.choice_d }[choice];
@@ -38,7 +39,8 @@ export default function PlayPage({
   const [sessionChecked, setSessionChecked] = useState(false);
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
-  const [pair, setPair] = useState<[CardWithSymbols, CardWithSymbols] | null>(null);
+  const [myCard, setMyCard] = useState<CardWithSymbols | null>(null);
+  const [centerCard, setCenterCard] = useState<CardWithSymbols | null>(null);
   const [matchSubmitting, setMatchSubmitting] = useState(false);
   const [matchWrongFlash, setMatchWrongFlash] = useState(false);
   const [answerSubmitting, setAnswerSubmitting] = useState(false);
@@ -133,16 +135,30 @@ export default function PlayPage({
     };
   }, [session]);
 
+  // 개인 카드는 라운드를 맞히면 그 카드로 바뀐다(실제 도블의 "탑 쌓기" 방식) —
+  // 새 라운드가 시작될 때마다(직전 라운드 결과가 이미 반영된 시점) 다시 조회한다.
   useEffect(() => {
-    if (!room || room.status !== "playing") return;
+    if (!session) return;
     let active = true;
-    getCurrentCardPair(room.id, room.current_card_pair_index).then((result) => {
-      if (active) setPair(result);
+    getPlayerCard(session.playerId).then((result) => {
+      if (active) setMyCard(result);
     });
     return () => {
       active = false;
     };
-  }, [room]);
+  }, [session, room?.current_card_pair_index]);
+
+  // 중앙 카드는 교사가 "카드 제시"를 누를 때마다 바뀐다.
+  useEffect(() => {
+    if (!room?.current_center_card_id) return;
+    let active = true;
+    getCardWithSymbols(room.current_center_card_id).then((result) => {
+      if (active) setCenterCard(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [room?.current_center_card_id]);
 
   // 라운드가 넘어가면 이전 라운드의 선택/피드백 상태를 지운다 — 렌더 중에 바로
   // 값을 맞추는 React 공식 패턴("Adjusting state when a prop changes")을 쓴다.
@@ -211,11 +227,13 @@ export default function PlayPage({
     }
   }, [room, priorityRemainingMs]);
 
+  // 정답 기호는 매칭 단계에서는 아직 없고(학생마다 자기 카드가 달라 공통 기호가
+  // 다름), 우선권이 확정된 뒤에는 room.priority_symbol_id로 고정된다 — 그 시점부터는
+  // 전원이 같은 중앙 카드를 보고 있으므로 centerCard에서 바로 찾을 수 있다.
   const commonSymbol = useMemo(() => {
-    if (!pair) return null;
-    const commonId = findCommonSymbolId(pair);
-    return [...pair[0].symbols, ...pair[1].symbols].find((s) => s.id === commonId) ?? null;
-  }, [pair]);
+    if (!centerCard || !room?.priority_symbol_id) return null;
+    return centerCard.symbols.find((s) => s.id === room.priority_symbol_id) ?? null;
+  }, [centerCard, room]);
 
   const myCards = useMemo(
     () => answerClaims.filter((c) => c.player_id === session?.playerId),
@@ -227,8 +245,16 @@ export default function PlayPage({
   );
 
   async function handleMatchClick(symbolId: string) {
-    if (!session || !room || !pair || room.round_phase !== "matching" || matchSubmitting) return;
-    const correctId = findCommonSymbolId(pair);
+    if (
+      !session ||
+      !room ||
+      !myCard ||
+      !centerCard ||
+      room.round_phase !== "matching" ||
+      matchSubmitting
+    )
+      return;
+    const correctId = findCommonSymbolId([myCard, centerCard]);
     if (symbolId !== correctId) {
       setMatchWrongFlash(true);
       setTimeout(() => setMatchWrongFlash(false), 500);
@@ -236,7 +262,7 @@ export default function PlayPage({
     }
     setMatchSubmitting(true);
     try {
-      await attemptMatch(room.id, room.current_card_pair_index, session.playerId);
+      await attemptMatch(room.id, room.current_card_pair_index, session.playerId, symbolId);
     } finally {
       setMatchSubmitting(false);
     }
@@ -270,14 +296,19 @@ export default function PlayPage({
   const myCardsTray = session && room?.status === "playing" && myCards.length > 0 && (
     <div className="mt-6 flex w-full max-w-sm flex-col items-center gap-2">
       <p className="text-xs font-semibold text-gray-500">내가 모은 카드 ({myCards.length}개)</p>
-      <div className="flex flex-wrap justify-center gap-2">
-        {myCards.map((c) => (
-          <span
+      <div className="flex flex-wrap justify-center gap-3">
+        {myCards.map((c, i) => (
+          <div
             key={c.id}
-            className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800"
+            className={`flex flex-col items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-2 py-2 shadow-sm ${
+              i === 0 ? "animate-[pulse_1s_ease-in-out_1]" : ""
+            }`}
           >
-            {c.symbol.label}
-          </span>
+            <SymbolIconBadge symbol={c.symbol} size={40} />
+            <span className="max-w-[64px] text-center text-[10px] font-semibold leading-tight text-amber-900">
+              {c.symbol.label}
+            </span>
+          </div>
         ))}
       </div>
     </div>
@@ -312,32 +343,56 @@ export default function PlayPage({
     );
   }
 
-  if (room?.status === "playing" && pair && commonSymbol) {
+  if (room?.status === "playing" && myCard) {
+    if (!centerCard) {
+      return (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <p className="text-sm text-gray-500">방 코드 {roomCode}</p>
+          <h1 className="text-xl font-bold">선생님이 첫 카드를 꺼내길 기다리는 중입니다...</h1>
+          <div className="mt-4">
+            <p className="mb-1 text-xs text-gray-400">내 카드</p>
+            <DobbleCard symbols={myCard.symbols} cardId={myCard.cardId} size={220} />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-8">
         {room.round_phase === "matching" && (
           <>
-            <div className={`flex flex-col items-center gap-6 ${matchWrongFlash ? "animate-pulse" : ""}`}>
-              <DobbleCard
-                symbols={pair[0].symbols}
-                cardId={String(pair[0].cardIndex)}
-                size={280}
-                onSymbolClick={handleMatchClick}
-              />
-              <DobbleCard
-                symbols={pair[1].symbols}
-                cardId={String(pair[1].cardIndex)}
-                size={280}
-                onSymbolClick={handleMatchClick}
-              />
+            <div className={`flex flex-col items-center gap-8 ${matchWrongFlash ? "animate-pulse" : ""}`}>
+              <div className="flex flex-col items-center gap-1">
+                <p className="text-xs font-semibold text-gray-400">내 카드</p>
+                <DobbleCard
+                  symbols={myCard.symbols}
+                  cardId={myCard.cardId}
+                  size={240}
+                  onSymbolClick={handleMatchClick}
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <CardStackDecoration size={72} />
+                <div key={centerCard.cardId} className="deal-card-animate flex flex-col items-center gap-1">
+                  <p className="text-xs font-semibold text-gray-400">중앙 카드</p>
+                  <DobbleCard
+                    symbols={centerCard.symbols}
+                    cardId={centerCard.cardId}
+                    size={240}
+                    onSymbolClick={handleMatchClick}
+                  />
+                </div>
+              </div>
             </div>
             <p className="text-sm text-gray-500">
-              {matchWrongFlash ? "아직 아니에요! 다시 찾아보세요." : "두 카드에 공통으로 있는 기호를 찾아 눌러보세요!"}
+              {matchWrongFlash
+                ? "아직 아니에요! 다시 찾아보세요."
+                : "내 카드와 중앙 카드에 공통으로 있는 기호를 찾아 눌러보세요!"}
             </p>
           </>
         )}
 
-        {room.round_phase === "priority_answering" && isPriorityMine && (
+        {room.round_phase === "priority_answering" && commonSymbol && isPriorityMine && (
           <div className="w-full max-w-sm text-center">
             <p className="text-sm font-semibold text-amber-700">
               우선권 획득! {remainingSec ?? "-"}초 안에 답하세요
@@ -347,7 +402,7 @@ export default function PlayPage({
           </div>
         )}
 
-        {room.round_phase === "priority_answering" && !isPriorityMine && (
+        {room.round_phase === "priority_answering" && commonSymbol && !isPriorityMine && (
           <div className="max-w-sm text-center">
             <p className="text-lg font-bold">{priorityPlayerNickname ?? "누군가"}님이 우선권을 얻어 답변 중입니다</p>
             <p className="mt-1 text-sm text-gray-500">{remainingSec ?? "-"}초 후 전체에게 공개됩니다</p>
@@ -357,7 +412,14 @@ export default function PlayPage({
           </div>
         )}
 
-        {room.round_phase === "open_answering" && (
+        {room.round_phase === "open_answering" && commonSymbol && isPriorityMine && (
+          <div className="max-w-sm text-center">
+            <p className="text-sm font-semibold text-gray-500">이미 우선권 답변을 시도했습니다</p>
+            <p className="mt-2 text-gray-600">다른 학생이 맞히면 이번 라운드가 종료됩니다.</p>
+          </div>
+        )}
+
+        {room.round_phase === "open_answering" && commonSymbol && !isPriorityMine && (
           <div className="w-full max-w-sm text-center">
             <p className="text-sm font-semibold text-red-700">전체 공개! 먼저 맞히면 카드를 획득합니다</p>
             <h2 className="mt-2 text-lg font-bold">{commonSymbol.question_text}</h2>
@@ -365,7 +427,7 @@ export default function PlayPage({
           </div>
         )}
 
-        {room.round_phase === "resolved" && (
+        {room.round_phase === "resolved" && commonSymbol && (
           <div className="max-w-sm text-center">
             <p className="text-lg font-bold">
               {currentRoundClaim ? `${currentRoundClaim.player_nickname}님 정답!` : "이번 라운드 종료"}
@@ -374,7 +436,7 @@ export default function PlayPage({
               정답: {commonSymbol.correct_choice ? choiceText(commonSymbol, commonSymbol.correct_choice) : "-"}
             </p>
             <p className="mt-1 text-xs text-gray-400">{commonSymbol.description}</p>
-            <p className="mt-4 text-sm text-gray-400">선생님이 다음 카드로 넘기면 자동으로 전환됩니다.</p>
+            <p className="mt-4 text-sm text-gray-400">선생님이 다음 카드를 꺼내면 자동으로 전환됩니다.</p>
           </div>
         )}
 

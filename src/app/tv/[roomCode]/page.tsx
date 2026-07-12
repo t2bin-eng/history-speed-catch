@@ -5,14 +5,14 @@ import { supabase } from "@/lib/supabaseClient";
 import { getRoomByCode } from "@/lib/rooms";
 import {
   expirePriorityIfNeeded,
-  getCurrentCardPair,
+  getCardWithSymbols,
   getRoomAnswerClaims,
   PRIORITY_WINDOW_MS,
   type AnswerClaimWithDetails,
   type CardWithSymbols,
 } from "@/lib/game";
 import type { Player, Room } from "@/types";
-import DobbleCard from "@/components/DobbleCard";
+import DobbleCard, { CardStackDecoration } from "@/components/DobbleCard";
 import RoomQrCode from "@/components/RoomQrCode";
 
 const PHASE_LABEL: Record<Room["round_phase"], string> = {
@@ -32,22 +32,22 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
   const { roomCode } = use(params);
   const [room, setRoom] = useState<Room | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [pair, setPair] = useState<[CardWithSymbols, CardWithSymbols] | null>(null);
+  const [centerCard, setCenterCard] = useState<CardWithSymbols | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [answerClaims, setAnswerClaims] = useState<AnswerClaimWithDetails[]>([]);
   const [banner, setBanner] = useState<AcquisitionBanner | null>(null);
   const [now, setNow] = useState<number | null>(null);
 
-  // 실시간 이벤트 콜백 안에서 최신 players/pair를 읽기 위한 ref — 구독 자체를
-  // players/pair가 바뀔 때마다 재생성하지 않기 위해 값만 매 렌더마다 갱신해둔다.
+  // 실시간 이벤트 콜백 안에서 최신 players/centerCard를 읽기 위한 ref — 구독 자체를
+  // players/centerCard가 바뀔 때마다 재생성하지 않기 위해 값만 매 렌더마다 갱신해둔다.
   const playersRef = useRef<Player[]>(players);
   useEffect(() => {
     playersRef.current = players;
   }, [players]);
-  const pairRef = useRef<[CardWithSymbols, CardWithSymbols] | null>(pair);
+  const centerCardRef = useRef<CardWithSymbols | null>(centerCard);
   useEffect(() => {
-    pairRef.current = pair;
-  }, [pair]);
+    centerCardRef.current = centerCard;
+  }, [centerCard]);
 
   useEffect(() => {
     let active = true;
@@ -105,19 +105,20 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
     };
   }, [room]);
 
+  // 중앙 카드는 교사가 "카드 제시"를 누를 때마다 바뀐다.
   useEffect(() => {
-    if (!room || room.status !== "playing") return;
+    if (!room?.current_center_card_id) return;
     let active = true;
-    getCurrentCardPair(room.id, room.current_card_pair_index).then((result) => {
-      if (active) setPair(result);
+    getCardWithSymbols(room.current_center_card_id).then((result) => {
+      if (active) setCenterCard(result);
     });
     return () => {
       active = false;
     };
-  }, [room]);
+  }, [room?.current_center_card_id]);
 
   // 카드 획득 기록 로딩 + 실시간 구독. 정답(is_correct=true) INSERT가 오면 획득
-  // 배너를 잠깐 띄운다 — 심볼/닉네임은 ref로 잡아둔 최신 pair/players에서 찾는다.
+  // 배너를 잠깐 띄운다 — 심볼/닉네임은 ref로 잡아둔 최신 centerCard/players에서 찾는다.
   useEffect(() => {
     if (!room) return;
     let active = true;
@@ -137,10 +138,7 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
           const row = payload.new as { player_id: string; symbol_id: string; is_correct: boolean };
           if (row.is_correct) {
             const nickname = playersRef.current.find((p) => p.id === row.player_id)?.nickname ?? "??";
-            const currentPair = pairRef.current;
-            const symbol = currentPair
-              ? [...currentPair[0].symbols, ...currentPair[1].symbols].find((s) => s.id === row.symbol_id)
-              : undefined;
+            const symbol = centerCardRef.current?.symbols.find((s) => s.id === row.symbol_id);
             setBanner({ key: `${row.player_id}-${row.symbol_id}-${Date.now()}`, nickname, label: symbol?.label ?? "" });
             setTimeout(() => setBanner(null), 3500);
           }
@@ -224,14 +222,18 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
       </header>
 
       <div className="flex flex-1 flex-wrap items-center justify-center gap-16 py-10">
-        <div className="flex flex-1 flex-wrap items-center justify-center gap-16">
-          {room?.status === "playing" && pair ? (
+        <div className="flex flex-1 flex-wrap items-center justify-center gap-6">
+          {room?.status === "playing" && centerCard ? (
             <>
-              <DobbleCard symbols={pair[0].symbols} cardId={String(pair[0].cardIndex)} size={420} />
-              <DobbleCard symbols={pair[1].symbols} cardId={String(pair[1].cardIndex)} size={420} />
+              <CardStackDecoration size={140} />
+              <div key={centerCard.cardId} className="deal-card-animate">
+                <DobbleCard symbols={centerCard.symbols} cardId={centerCard.cardId} size={420} />
+              </div>
             </>
           ) : (
-            <p className="text-4xl font-bold">게임 시작을 기다리는 중...</p>
+            <p className="text-4xl font-bold">
+              {room?.status === "playing" ? "선생님이 카드를 꺼내길 기다리는 중..." : "게임 시작을 기다리는 중..."}
+            </p>
           )}
         </div>
 

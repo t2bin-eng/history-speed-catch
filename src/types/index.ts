@@ -17,6 +17,11 @@ export interface Room {
   round_phase: RoundPhase;
   priority_player_id: string | null;
   priority_started_at: string | null;
+  /** 지금 중앙에 공개된 카드(교사의 "카드 제시"로 바뀜). 첫 제시 전에는 null. */
+  current_center_card_id: string | null;
+  /** 우선권자가 매칭한 기호. 학생마다 개인 카드가 달라 라운드 공통 기호가 없으므로
+   *  우선권 확정 시점에 이걸로 "이번 라운드의 문제"를 고정한다. */
+  priority_symbol_id: string | null;
   created_at: string;
 }
 
@@ -53,6 +58,8 @@ export interface Player {
   nickname: string;
   score: number;
   streak: number;
+  /** 입장 시 배정받아 게임 내내 유지하는 개인 카드(진짜 도블처럼). */
+  card_id: string | null;
   joined_at: string;
 }
 

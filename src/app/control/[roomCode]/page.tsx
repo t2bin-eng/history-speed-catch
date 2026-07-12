@@ -3,8 +3,8 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { getRoomByCode, startGame, nextCard, endGame } from "@/lib/rooms";
-import { getCardCount, getRoomAnswerClaims, type AnswerClaimWithDetails } from "@/lib/game";
+import { getRoomByCode, startGame, revealNextCenterCard, endGame } from "@/lib/rooms";
+import { getRoomAnswerClaims, type AnswerClaimWithDetails } from "@/lib/game";
 import type { Player, Room } from "@/types";
 
 const PHASE_LABEL: Record<Room["round_phase"], string> = {
@@ -23,7 +23,6 @@ export default function ControlPage({
   const [room, setRoom] = useState<Room | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [cardCount, setCardCount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [answerClaims, setAnswerClaims] = useState<AnswerClaimWithDetails[]>([]);
@@ -38,9 +37,6 @@ export default function ControlPage({
         return;
       }
       setRoom(data);
-      getCardCount(data.id).then((count) => {
-        if (active) setCardCount(count);
-      });
     });
 
     const roomChannel = supabase
@@ -129,14 +125,14 @@ export default function ControlPage({
     }
   }
 
-  async function handleNext() {
+  async function handleRevealNext() {
     if (!room) return;
     setBusy(true);
     setError(null);
     try {
-      await nextCard(room.id, room.current_card_pair_index + 1);
+      await revealNextCenterCard(room.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "다음 카드 진행 중 오류가 발생했습니다.");
+      setError(e instanceof Error ? e.message : "카드 제시 중 오류가 발생했습니다.");
     } finally {
       setBusy(false);
     }
@@ -171,8 +167,6 @@ export default function ControlPage({
     );
   }
 
-  const isLastPair = cardCount !== null && room.current_card_pair_index >= cardCount - 2;
-
   return (
     <div className="mx-auto flex max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
       <div>
@@ -204,12 +198,11 @@ export default function ControlPage({
           <>
             <button
               type="button"
-              onClick={handleNext}
-              disabled={busy || isLastPair}
+              onClick={handleRevealNext}
+              disabled={busy}
               className="flex h-11 items-center justify-center rounded-full bg-foreground px-6 text-background disabled:opacity-50"
             >
-              다음 카드 ({room.current_card_pair_index + 1}
-              {cardCount !== null ? ` / ${cardCount - 1}` : ""})
+              카드 제시 ({room.current_center_card_id ? room.current_card_pair_index + 1 : "첫 장"})
             </button>
             <button
               type="button"

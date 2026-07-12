@@ -18,6 +18,82 @@ function paletteColorFor(seed: string): string {
   return ICON_PALETTE[hashSeed(seed) % ICON_PALETTE.length];
 }
 
+/**
+ * 카드 게임판이 아니라 단일 기호를 뱃지처럼 보여줄 때 쓰는 작은 원형 아이콘.
+ * "내가 모은 카드" 트레이 등에서 DobbleCard 안의 아이콘과 동일한 색/스타일로
+ * 표시해 같은 기호임을 한눈에 알아볼 수 있게 한다.
+ */
+export function SymbolIconBadge({ symbol, size = 44 }: { symbol: Symbol; size?: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        border: `2px solid ${INK}`,
+        background: paletteColorFor(symbol.id),
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        flexShrink: 0,
+      }}
+    >
+      {[symbol].map((s) => {
+        const IconComp = getIconComponent(s.icon_name);
+        return s.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={s.id}
+            src={s.image_url}
+            alt={s.label}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : IconComp ? (
+          <IconComp key={s.id} size={size * 0.58} color={FRAME} stroke={1.75} />
+        ) : (
+          <span
+            key={s.id}
+            style={{
+              fontFamily: "var(--font-gowun-batang), serif",
+              fontSize: size * 0.36,
+              fontWeight: 700,
+              color: FRAME,
+            }}
+          >
+            {s.label.charAt(0)}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 중앙 카드 옆에 놓는 "카드 뒷면 스택" 장식. 진짜 도블처럼 카드를 한 장씩 뽑아
+ * 보여준다는 느낌을 주기 위한 순수 장식용 컴포넌트 — 클릭 불가, 실제 데이터 없음.
+ */
+export function CardStackDecoration({ size = 100 }: { size?: number }) {
+  return (
+    <div style={{ position: "relative", width: size, height: size }}>
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            inset: 0,
+            borderRadius: "50%",
+            border: `3px solid ${INK}`,
+            background: FRAME,
+            transform: `rotate(${(i - 1) * 7}deg) translate(${(i - 1) * 4}px, ${(2 - i) * 3}px)`,
+            opacity: 0.45 + i * 0.18,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 interface Slot {
   x: number; // 카드 크기 대비 중심 x 비율(0~1)
   y: number;

@@ -114,30 +114,68 @@ async function recordRoundStart(roomId: string, cardPairIndex: number): Promise<
     );
 }
 
-function resetRoundState() {
-  return {
-    round_phase: "matching" as const,
-    priority_player_id: null,
-    priority_started_at: null,
-  };
-}
-
 export async function startGame(roomId: string): Promise<void> {
-  const { error } = await supabase
-    .from("rooms")
-    .update({ status: "playing", current_card_pair_index: 0, ...resetRoundState() })
-    .eq("id", roomId);
+  // 카드는 아직 안 나온 상태로 시작한다 — 첫 장도 교사가 "카드 제시"를 눌러야 나온다
+  // (실제 도블처럼 스택에서 카드를 하나씩 꺼내는 연출을 살리기 위함).
+  const { error } = await supabase.from("rooms").update({ status: "playing" }).eq("id", roomId);
   if (error) throw new Error(error.message);
-  await recordRoundStart(roomId, 0);
 }
 
-export async function nextCard(roomId: string, nextCardPairIndex: number): Promise<void> {
-  const { error } = await supabase
+/**
+ * 학생마다 개인 카드를 갖고 있는 새 매칭 방식에서, 교사가 "카드 제시"를 누를 때마다
+ * 중앙에 공개할 카드를 하나 무작위로 고른다. 문제(정답 기호)는 그냥 랜덤으로 나오면
+ * 되고, 라운드를 맞힌 학생은 그 카드를 획득해 자신의 새 기준 카드로 삼는다(실제 도블의
+ * "탑 쌓기" 방식 — `awardPointsAndResolve`에서 승자의 `players.card_id`를 갱신).
+ *
+ * 후보는 (1) 아직 한 번도 중앙에 나온 적 없고, (2) 지금 누구의 개인 카드도 아닌 카드로
+ * 제한한다 — 개인 카드와 중앙 카드가 같아지면 두 카드가 100% 일치해 "공통 기호 정확히
+ * 1개" 규칙이 깨진다. 후보가 소진되면(카드를 다 보여줌) 개인 카드만 제외하고 반복을
+ * 허용하는 폴백으로 넘어간다 — 교사가 계속 진행할 수 있어야 하므로 하드 스톱은 두지 않는다.
+ */
+export async function revealNextCenterCard(roomId: string): Promise<{ done: boolean }> {
+  const [{ data: allCards }, { data: reveals }, { data: players }] = await Promise.all([
+    supabase.from("cards").select("id").eq("room_id", roomId),
+    supabase.from("center_reveals").select("round_index, card_id").eq("room_id", roomId),
+    supabase.from("players").select("card_id").eq("room_id", roomId),
+  ]);
+  if (!allCards || allCards.length === 0) return { done: true };
+
+  const revealedIds = new Set((reveals ?? []).map((r) => r.card_id as string));
+  const personalCardIds = new Set(
+    (players ?? []).map((p) => p.card_id).filter((id): id is string => Boolean(id))
+  );
+
+  let candidates = allCards.filter((c) => !revealedIds.has(c.id) && !personalCardIds.has(c.id));
+  if (candidates.length === 0) {
+    candidates = allCards.filter((c) => !personalCardIds.has(c.id)); // 반복 허용 폴백
+  }
+  if (candidates.length === 0) {
+    candidates = allCards; // 극단적 예외(카드보다 학생이 훨씬 많음) 최종 폴백
+  }
+
+  const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+
+  const roundIndex = reveals?.length ?? 0;
+  const { error: revealError } = await supabase
+    .from("center_reveals")
+    .insert({ room_id: roomId, round_index: roundIndex, card_id: chosen.id });
+  if (revealError) throw new Error(revealError.message);
+
+  const { error: roomError } = await supabase
     .from("rooms")
-    .update({ current_card_pair_index: nextCardPairIndex, ...resetRoundState() })
+    .update({
+      current_center_card_id: chosen.id,
+      current_card_pair_index: roundIndex,
+      round_phase: "matching",
+      priority_player_id: null,
+      priority_symbol_id: null,
+      priority_started_at: null,
+    })
     .eq("id", roomId);
-  if (error) throw new Error(error.message);
-  await recordRoundStart(roomId, nextCardPairIndex);
+  if (roomError) throw new Error(roomError.message);
+
+  await recordRoundStart(roomId, roundIndex);
+  return { done: false };
 }
 
 export async function endGame(roomId: string): Promise<void> {
@@ -151,15 +189,29 @@ export async function joinRoom(
 ): Promise<{ roomId: string; playerId: string }> {
   const { data: room, error: roomError } = await supabase
     .from("rooms")
-    .select("id")
+    .select("id, current_center_card_id")
     .eq("room_code", roomCode)
     .maybeSingle();
   if (roomError) throw new Error(roomError.message);
   if (!room) throw new Error("존재하지 않는 방 코드입니다.");
 
+  const { data: cards, error: cardsError } = await supabase
+    .from("cards")
+    .select("id")
+    .eq("room_id", room.id);
+  if (cardsError) throw new Error(cardsError.message);
+  if (!cards || cards.length === 0) throw new Error("이 방에는 아직 카드가 없습니다.");
+
+  // 개인 카드는 지금 중앙에 공개된 카드와는 절대 겹치면 안 된다(겹치면 두 카드가
+  // 100% 일치해 "공통 기호 정확히 1개" 규칙이 깨진다). 그 외에는 무작위로 배정 —
+  // 다른 학생과 같은 카드를 받아도 무방하다(각자 독립적으로 매칭을 시도하므로 문제 없음).
+  const eligible = cards.filter((c) => c.id !== room.current_center_card_id);
+  const pool = eligible.length > 0 ? eligible : cards;
+  const assignedCard = pool[Math.floor(Math.random() * pool.length)];
+
   const { data: player, error: playerError } = await supabase
     .from("players")
-    .insert({ room_id: room.id, nickname, score: 0, streak: 0 })
+    .insert({ room_id: room.id, nickname, score: 0, streak: 0, card_id: assignedCard.id })
     .select()
     .single();
   if (playerError || !player) throw new Error(playerError?.message ?? "참가에 실패했습니다.");

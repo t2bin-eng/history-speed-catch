@@ -2,43 +2,48 @@ import { supabase } from "./supabaseClient";
 import type { AnswerClaim, Choice, Room, Symbol } from "@/types";
 
 export interface CardWithSymbols {
-  cardIndex: number;
+  cardId: string;
   symbols: Symbol[];
 }
 
-/**
- * 카드 쌍 인덱스 i는 card_index=i와 card_index=i+1을 비교한다.
- * 덱의 어떤 두 카드를 골라도 공통 기호가 정확히 1개이므로(유한 사영평면 성질),
- * 순서대로 인접한 카드끼리 짝지어도 게임 규칙이 항상 성립한다.
- */
-export async function getCurrentCardPair(
-  roomId: string,
-  cardPairIndex: number
-): Promise<[CardWithSymbols, CardWithSymbols] | null> {
-  const { data: cards, error } = await supabase
+/** 카드 하나를 심볼까지 조인해서 가져온다. 중앙 카드/개인 카드 조회에 공통으로 쓴다. */
+export async function getCardWithSymbols(cardId: string): Promise<CardWithSymbols | null> {
+  const { data: card, error } = await supabase
     .from("cards")
-    .select("card_index, symbol_ids")
-    .eq("room_id", roomId)
-    .in("card_index", [cardPairIndex, cardPairIndex + 1]);
-  if (error || !cards || cards.length < 2) return null;
+    .select("symbol_ids")
+    .eq("id", cardId)
+    .maybeSingle();
+  if (error || !card) return null;
 
-  const allSymbolIds = [...new Set(cards.flatMap((c) => c.symbol_ids as string[]))];
+  const symbolIds = card.symbol_ids as string[];
   const { data: symbols, error: symbolsError } = await supabase
     .from("symbols")
     .select("*")
-    .in("id", allSymbolIds);
+    .in("id", symbolIds);
   if (symbolsError || !symbols) return null;
 
   const symbolMap = new Map((symbols as Symbol[]).map((s) => [s.id, s]));
-  const sorted = [...cards].sort((a, b) => a.card_index - b.card_index);
-  const pair = sorted.map((c) => ({
-    cardIndex: c.card_index,
-    symbols: (c.symbol_ids as string[])
-      .map((id) => symbolMap.get(id))
-      .filter((s): s is Symbol => Boolean(s)),
-  }));
+  return {
+    cardId,
+    symbols: symbolIds.map((id) => symbolMap.get(id)).filter((s): s is Symbol => Boolean(s)),
+  };
+}
 
-  return [pair[0], pair[1]];
+/** 지금 중앙에 공개된 카드. 첫 "카드 제시" 전이면 null. */
+export async function getCenterCard(room: Room): Promise<CardWithSymbols | null> {
+  if (!room.current_center_card_id) return null;
+  return getCardWithSymbols(room.current_center_card_id);
+}
+
+/** 학생의 개인 카드(입장 시 배정, 게임 내내 고정). */
+export async function getPlayerCard(playerId: string): Promise<CardWithSymbols | null> {
+  const { data: player, error } = await supabase
+    .from("players")
+    .select("card_id")
+    .eq("id", playerId)
+    .maybeSingle();
+  if (error || !player?.card_id) return null;
+  return getCardWithSymbols(player.card_id);
 }
 
 export async function getCardCount(roomId: string): Promise<number> {
@@ -66,22 +71,25 @@ export function isGoldenRound(cardPairIndex: number): boolean {
 }
 
 /**
- * 매칭 단계에서 정답(공통 기호)을 클릭한 학생을 "우선권자"로 지정한다.
- * rooms.round_phase='matching' 조건부 UPDATE라서, 여러 명이 동시에 맞혀도
- * 그 순간 딱 한 요청만 실제로 행을 갱신하고 나머지는 영향받은 행이 0개가 되어
- * 자연히 걸러진다(card_claims의 partial unique index와 같은 목적의 다른 구현).
+ * 매칭 단계에서 자기 카드와 중앙 카드의 공통 기호를 클릭한 학생을 "우선권자"로
+ * 지정한다. 학생마다 개인 카드가 달라 정답 기호도 사람마다 다르므로, 클릭한 기호
+ * ID를 함께 받아 `priority_symbol_id`로 저장해 이후 문제 단계의 기준으로 삼는다.
+ * rooms.round_phase='matching' 조건부 UPDATE라서, 여러 명이 동시에 맞혀도 그 순간
+ * 딱 한 요청만 실제로 행을 갱신하고 나머지는 영향받은 행이 0개가 되어 자연히 걸러진다.
  * 반환값이 false면 이미 다른 학생이 우선권을 가져간 것이다.
  */
 export async function attemptMatch(
   roomId: string,
   cardPairIndex: number,
-  playerId: string
+  playerId: string,
+  symbolId: string
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from("rooms")
     .update({
       round_phase: "priority_answering",
       priority_player_id: playerId,
+      priority_symbol_id: symbolId,
       priority_started_at: new Date().toISOString(),
     })
     .eq("id", roomId)
@@ -129,9 +137,15 @@ async function awardPointsAndResolve(
   const streakBonus = player ? Math.min(player.streak, MAX_STREAK_BONUS) : 0;
   const points = symbol.difficulty * golden + streakBonus;
   if (player) {
+    // 실제 도블의 "탑 쌓기" 방식: 라운드를 맞힌 학생은 방금 나온 중앙 카드를 획득해
+    // 그 카드가 자신의 새 기준 카드가 된다(다음 라운드부터 이 카드로 매칭 시도).
     await supabase
       .from("players")
-      .update({ score: player.score + points, streak: player.streak + 1 })
+      .update({
+        score: player.score + points,
+        streak: player.streak + 1,
+        card_id: room.current_center_card_id,
+      })
       .eq("id", playerId);
   }
   await supabase
@@ -144,9 +158,10 @@ async function awardPointsAndResolve(
 
 /**
  * 문제 정답 제출. phase='priority'면 우선권자 독점 구간(정답→즉시 확정,
- * 오답→즉시 전원 개방으로 전환). phase='open'이면 기존 submitClaim과 동일한
- * race-safe 패턴(정답 insert 시도 → unique violation(23505)이면 이미 다른
- * 학생이 먼저 맞힌 것이므로 오답으로 재기록).
+ * 오답→즉시 전원 개방으로 전환). phase='open'이면 우선권을 이미 써버린 학생은
+ * 제외하고(이 라운드에서 한 번 더 시도하는 걸 막음), race-safe 패턴(정답 insert
+ * 시도 → unique violation(23505)이면 이미 다른 학생이 먼저 맞힌 것이므로 오답으로
+ * 재기록)으로 첫 정답자만 카드를 가져간다.
  */
 export async function submitAnswer(
   room: Room,
@@ -182,6 +197,10 @@ export async function submitAnswer(
       .eq("current_card_pair_index", cardPairIndex)
       .eq("round_phase", "priority_answering");
     return { isCorrect: false, symbol, pointsAwarded: 0 };
+  }
+
+  if (playerId === room.priority_player_id) {
+    throw new Error("우선권 구간에서 이미 답변을 시도했습니다. 이 라운드는 다른 학생에게 공개됩니다.");
   }
 
   if (isCorrectGuess) {

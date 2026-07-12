@@ -24,3 +24,19 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* 중앙 카드가 바뀔 때 "스택에서 뽑혀 나오는" 느낌을 주는 연출.
+   컴포넌트 쪽에서 카드 id를 key로 줘서 카드가 바뀔 때마다 리마운트되게 해야 재생된다. */
+@keyframes dealCard {
+  from {
+    transform: translateX(-32px) scale(0.88) rotate(-3deg);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+.deal-card-animate {
+  animation: dealCard 0.4s ease-out;
+}
