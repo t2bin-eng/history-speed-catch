@@ -1,7 +1,13 @@
 import { supabase } from "./supabaseClient";
 import { generateDobbleDeck } from "./dobbleDeck";
 import { ICON_NAMES } from "./icons";
-import type { Room, SymbolCsvRow } from "@/types";
+import type { Room, RoundBonus, SymbolCsvRow } from "@/types";
+
+// 상위권 독식 완화용 보너스 라운드 확률. 잭팟이 우선 판정되고(모두에게 5배),
+// 안 걸리면 6라운드(인덱스 5)부터 찬스턴(1등이 아니면 3배+카드 스틸)을 굴린다.
+const JACKPOT_PROBABILITY = 0.125;
+const CHANCE_ROUND_MIN_INDEX = 5;
+const CHANCE_ROUND_PROBABILITY = 0.3;
 
 function generateRoomCode(): string {
   return String(Math.floor(10000 + Math.random() * 90000)); // 5자리
@@ -161,12 +167,21 @@ export async function revealNextCenterCard(roomId: string): Promise<{ done: bool
     .insert({ room_id: roomId, round_index: roundIndex, card_id: chosen.id });
   if (revealError) throw new Error(revealError.message);
 
+  let roundBonus: RoundBonus = "none";
+  if (Math.random() < JACKPOT_PROBABILITY) {
+    roundBonus = "jackpot";
+  } else if (roundIndex >= CHANCE_ROUND_MIN_INDEX && Math.random() < CHANCE_ROUND_PROBABILITY) {
+    roundBonus = "chance";
+  }
+
   const { error: roomError } = await supabase
     .from("rooms")
     .update({
       current_center_card_id: chosen.id,
       current_card_pair_index: roundIndex,
       round_phase: "matching",
+      round_bonus: roundBonus,
+      last_steal_victim_nickname: null,
       priority_player_id: null,
       priority_symbol_id: null,
       priority_started_at: null,

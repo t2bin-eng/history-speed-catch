@@ -8,6 +8,8 @@
 export type RoomStatus = "waiting" | "playing" | "finished";
 export type RoundPhase = "matching" | "priority_answering" | "open_answering" | "resolved";
 export type Choice = "a" | "b" | "c" | "d";
+/** 'jackpot': 누가 맞히든 5배. 'chance': 1등이 아닌 사람이 맞히면 3배+1등 카드 스틸. */
+export type RoundBonus = "none" | "jackpot" | "chance";
 
 export interface Room {
   id: string;
@@ -22,6 +24,10 @@ export interface Room {
   /** 우선권자가 매칭한 기호. 학생마다 개인 카드가 달라 라운드 공통 기호가 없으므로
    *  우선권 확정 시점에 이걸로 "이번 라운드의 문제"를 고정한다. */
   priority_symbol_id: string | null;
+  round_bonus: RoundBonus;
+  /** 찬스턴에서 카드를 빼앗긴 1등의 닉네임. 라운드 종료 화면에 잠깐 보여주고
+   *  다음 카드 제시 때 비워진다. */
+  last_steal_victim_nickname: string | null;
   created_at: string;
 }
 

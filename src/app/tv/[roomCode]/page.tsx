@@ -7,6 +7,7 @@ import {
   expirePriorityIfNeeded,
   getCardWithSymbols,
   getRoomAnswerClaims,
+  isGoldenRound,
   HINT_REVEAL_MS,
   PRIORITY_WINDOW_MS,
   type AnswerClaimWithDetails,
@@ -224,6 +225,16 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
       ? (centerCard.symbols.find((s) => s.id === room.priority_symbol_id) ?? null)
       : null;
 
+  // 상위권 독식을 완화하는 보너스 라운드 안내 — 잭팟/찬스턴이 골든 라운드보다 우선.
+  const specialRoundLabel =
+    room?.round_bonus === "jackpot"
+      ? "💰 황금 잭팟 라운드! 누가 맞혀도 5배 점수!"
+      : room?.round_bonus === "chance"
+        ? "🎲 찬스턴! 1등이 아닌 사람이 맞히면 3배 점수 + 1등 카드 스틸!"
+        : room && isGoldenRound(room.current_card_pair_index)
+          ? "⭐ 골든 라운드 (2배 점수)"
+          : null;
+
   // 50초 만료 시 전체 공개로 전환 시도 — 학생 화면과 동일한 조건부 UPDATE라서
   // 양쪽에서 동시에 호출해도 안전(idempotent)하다.
   useEffect(() => {
@@ -294,6 +305,12 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
         <p className="text-2xl text-gray-600">참여 인원 {players.length}명</p>
       </header>
 
+      {specialRoundLabel && room?.round_phase !== "resolved" && (
+        <p className="mx-auto mt-4 w-full max-w-2xl rounded-full border-2 border-amber-400 bg-amber-50 px-4 py-2 text-center text-lg font-bold text-amber-800 shadow-sm">
+          {specialRoundLabel}
+        </p>
+      )}
+
       {room?.round_phase === "priority_answering" && commonSymbol && (
         <div className="mx-auto mt-4 w-full max-w-2xl rounded-2xl border bg-white p-5 text-center shadow-sm">
           <p className="text-sm font-semibold text-gray-400">문제 미리보기 (선택지는 아직 비공개)</p>
@@ -304,6 +321,11 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
 
       {room?.round_phase === "resolved" && commonSymbol && (
         <div className="mx-auto mt-4 w-full max-w-2xl rounded-2xl border bg-white p-5 text-center shadow-sm">
+          {room.last_steal_victim_nickname && (
+            <p className="mb-2 text-lg font-bold text-amber-700">
+              🎲 찬스턴 성공! {room.last_steal_victim_nickname}님의 카드를 가져왔습니다!
+            </p>
+          )}
           <p className="text-sm font-semibold text-gray-400">이번 라운드 주제</p>
           <p className="mt-1 text-xl font-bold">{commonSymbol.label}</p>
           <p className="mt-1 text-base text-gray-600">{commonSymbol.description}</p>

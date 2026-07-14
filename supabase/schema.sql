@@ -15,6 +15,11 @@ create table if not exists rooms (
   priority_started_at timestamptz,
   current_center_card_id uuid,
   priority_symbol_id uuid,
+  -- 상위권 독식을 완화하는 보너스 라운드. 'jackpot'(누가 맞히든 5배)은 매 라운드
+  -- 12.5% 확률, 'chance'(1등이 아닌 사람이 맞히면 3배+1등 카드 스틸)는 6라운드
+  -- 이후 30% 확률로 등장 — revealNextCenterCard에서 결정해 저장한다.
+  round_bonus text not null default 'none' check (round_bonus in ('none', 'jackpot', 'chance')),
+  last_steal_victim_nickname text,
   created_at timestamptz not null default now()
 );
 

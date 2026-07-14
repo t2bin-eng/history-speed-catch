@@ -11,6 +11,7 @@ import {
   getCardWithSymbols,
   getPlayerCard,
   getRoomAnswerClaims,
+  isGoldenRound,
   submitAnswer,
   HINT_REVEAL_MS,
   PRIORITY_WINDOW_MS,
@@ -237,6 +238,16 @@ export default function PlayPage({
     return centerCard.symbols.find((s) => s.id === room.priority_symbol_id) ?? null;
   }, [centerCard, room]);
 
+  // 상위권 독식을 완화하는 보너스 라운드 안내 — 잭팟/찬스턴이 골든 라운드보다 우선.
+  const specialRoundLabel =
+    room?.round_bonus === "jackpot"
+      ? "💰 황금 잭팟 라운드! 누가 맞혀도 5배 점수!"
+      : room?.round_bonus === "chance"
+        ? "🎲 찬스턴! 1등이 아닌 사람이 맞히면 3배 점수 + 1등 카드 스틸!"
+        : room && isGoldenRound(room.current_card_pair_index)
+          ? "⭐ 골든 라운드 (2배 점수)"
+          : null;
+
   const myCards = useMemo(
     () => answerClaims.filter((c) => c.player_id === session?.playerId),
     [answerClaims, session]
@@ -367,6 +378,12 @@ export default function PlayPage({
 
     return (
       <div className="bg-play-screen flex flex-1 flex-col items-center justify-center gap-6 px-6 py-8">
+        {specialRoundLabel && room.round_phase !== "resolved" && (
+          <p className="rounded-full border-2 border-amber-400 bg-amber-50 px-4 py-2 text-center text-sm font-bold text-amber-800 shadow-sm">
+            {specialRoundLabel}
+          </p>
+        )}
+
         {room.round_phase === "matching" && (
           <>
             <div className={`flex flex-col items-center gap-8 ${matchWrongFlash ? "animate-pulse" : ""}`}>
@@ -446,6 +463,11 @@ export default function PlayPage({
             <p className="text-lg font-bold">
               {currentRoundClaim ? `${currentRoundClaim.player_nickname}님 정답!` : "이번 라운드 종료"}
             </p>
+            {room.last_steal_victim_nickname && (
+              <p className="mt-1 text-sm font-bold text-amber-700">
+                🎲 찬스턴 성공! {room.last_steal_victim_nickname}님의 카드를 가져왔습니다!
+              </p>
+            )}
             <p className="mt-2 text-sm font-semibold text-gray-700">주제: {commonSymbol.label}</p>
             <p className="mt-1 text-sm text-gray-600">
               정답: {commonSymbol.correct_choice ? choiceText(commonSymbol, commonSymbol.correct_choice) : "-"}

@@ -65,6 +65,9 @@ export const PRIORITY_WINDOW_MS = 35_000;
 export const HINT_REVEAL_MS = 25_000;
 const GOLDEN_ROUND_INTERVAL = 5;
 const MAX_STREAK_BONUS = 3;
+export const GOLDEN_MULTIPLIER = 2;
+export const JACKPOT_MULTIPLIER = 5;
+export const CHANCE_MULTIPLIER = 3;
 
 export function isGoldenRound(cardPairIndex: number): boolean {
   return (cardPairIndex + 1) % GOLDEN_ROUND_INTERVAL === 0;
@@ -122,6 +125,41 @@ export interface AnswerResult {
   pointsAwarded: number;
 }
 
+/**
+ * 상위권 독식을 완화하는 보너스 배율. 잭팟은 누가 맞히든 5배. 찬스턴은 그 순간
+ * 점수 1등이 아닌 학생이 맞혔을 때만 3배 + 1등의 현재 카드를 무작위 카드로
+ * 바꿔버린다("카드 스틸" — 점수는 건드리지 않고, 매칭에 쓰는 카드만 잃게 해서
+ * 시각적으로 확실한 역전 임팩트를 준다). 여러 배율이 동시에 해당하면(예: 골든
+ * 라운드이면서 잭팟) 가장 큰 배율 하나만 적용한다 — 곱해서 폭주하지 않도록.
+ */
+async function resolveBonusMultiplier(
+  room: Room,
+  playerId: string
+): Promise<{ multiplier: number; stolenFromPlayerId: string | null; stolenFromNickname: string | null }> {
+  const golden = isGoldenRound(room.current_card_pair_index) ? GOLDEN_MULTIPLIER : 1;
+  const jackpot = room.round_bonus === "jackpot" ? JACKPOT_MULTIPLIER : 1;
+
+  let chance = 1;
+  let stolenFromPlayerId: string | null = null;
+  let stolenFromNickname: string | null = null;
+  if (room.round_bonus === "chance") {
+    const { data: ranked } = await supabase
+      .from("players")
+      .select("id, nickname, score")
+      .eq("room_id", room.id)
+      .order("score", { ascending: false })
+      .order("nickname", { ascending: true });
+    const leader = ranked && ranked.length >= 2 ? ranked[0] : null;
+    if (leader && leader.id !== playerId) {
+      chance = CHANCE_MULTIPLIER;
+      stolenFromPlayerId = leader.id;
+      stolenFromNickname = leader.nickname;
+    }
+  }
+
+  return { multiplier: Math.max(golden, jackpot, chance), stolenFromPlayerId, stolenFromNickname };
+}
+
 async function awardPointsAndResolve(
   room: Room,
   cardPairIndex: number,
@@ -133,9 +171,9 @@ async function awardPointsAndResolve(
     .select("score, streak")
     .eq("id", playerId)
     .single();
-  const golden = isGoldenRound(cardPairIndex) ? 2 : 1;
+  const { multiplier, stolenFromPlayerId, stolenFromNickname } = await resolveBonusMultiplier(room, playerId);
   const streakBonus = player ? Math.min(player.streak, MAX_STREAK_BONUS) : 0;
-  const points = symbol.difficulty * golden + streakBonus;
+  const points = symbol.difficulty * multiplier + streakBonus;
   if (player) {
     // 실제 도블의 "탑 쌓기" 방식: 라운드를 맞힌 학생은 방금 나온 중앙 카드를 획득해
     // 그 카드가 자신의 새 기준 카드가 된다(다음 라운드부터 이 카드로 매칭 시도).
@@ -148,9 +186,18 @@ async function awardPointsAndResolve(
       })
       .eq("id", playerId);
   }
+
+  if (stolenFromPlayerId) {
+    const { data: allCards } = await supabase.from("cards").select("id").eq("room_id", room.id);
+    if (allCards && allCards.length > 0) {
+      const newCard = allCards[Math.floor(Math.random() * allCards.length)];
+      await supabase.from("players").update({ card_id: newCard.id }).eq("id", stolenFromPlayerId);
+    }
+  }
+
   await supabase
     .from("rooms")
-    .update({ round_phase: "resolved" })
+    .update({ round_phase: "resolved", last_steal_victim_nickname: stolenFromNickname })
     .eq("id", room.id)
     .eq("current_card_pair_index", cardPairIndex);
   return points;
