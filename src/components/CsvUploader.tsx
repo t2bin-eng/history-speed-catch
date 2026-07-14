@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { parseSymbolCsv, buildSymbolCsvTemplate } from "@/lib/csv";
 import { generateDobbleDeck } from "@/lib/dobbleDeck";
 import { createRoom } from "@/lib/rooms";
+import { getSavedQuestionSet, saveQuestionSet } from "@/lib/savedQuestionSet";
 import type { SymbolCsvRow } from "@/types";
 import SymbolTile from "./SymbolTile";
 import RoomQrCode from "./RoomQrCode";
@@ -26,6 +27,51 @@ export default function CsvUploader() {
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [roomError, setRoomError] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [loadingSaved, setLoadingSaved] = useState(true);
+  const [savedFileName, setSavedFileName] = useState<string | null>(null);
+  const [savingNotice, setSavingNotice] = useState<string | null>(null);
+
+  // 마지막으로 업로드해서 저장해 둔 CSV가 있으면 자동으로 불러온다.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const saved = await getSavedQuestionSet();
+        if (cancelled || !saved) return;
+        applyParsedCsv(saved.csvText);
+        setSavedFileName(saved.fileName);
+      } catch (e) {
+        // 저장된 세트를 못 불러와도 업로드 자체는 가능해야 하므로 조용히 무시하고
+        // 콘솔에만 남긴다.
+        console.error("저장된 CSV 불러오기 실패:", e);
+      } finally {
+        if (!cancelled) setLoadingSaved(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function applyParsedCsv(text: string) {
+    const result = parseSymbolCsv(text);
+    const errs = [...result.errors];
+    let generated: SymbolCsvRow[][] | null = null;
+
+    if (result.rows.length > 0) {
+      try {
+        generated = generateDobbleDeck(result.rows);
+      } catch (e) {
+        errs.push(e instanceof Error ? e.message : "카드 세트 생성 중 오류가 발생했습니다.");
+      }
+    }
+
+    setRows(result.rows);
+    setDeck(generated);
+    setErrors(errs);
+    return errs.length === 0 && result.rows.length > 0;
+  }
 
   async function handleCreateRoom() {
     setCreatingRoom(true);
@@ -42,21 +88,21 @@ export default function CsvUploader() {
 
   async function handleFile(file: File) {
     const text = await file.text();
-    const result = parseSymbolCsv(text);
-    const errs = [...result.errors];
-    let generated: SymbolCsvRow[][] | null = null;
+    const ok = applyParsedCsv(text);
+    setSavedFileName(null);
+    setRoomCode(null);
 
-    if (result.rows.length > 0) {
+    if (ok) {
       try {
-        generated = generateDobbleDeck(result.rows);
+        await saveQuestionSet(text, file.name);
+        setSavedFileName(file.name);
+        setSavingNotice(`"${file.name}" 저장 완료 — 다음에 다시 업로드하지 않아도 자동으로 불러옵니다.`);
       } catch (e) {
-        errs.push(e instanceof Error ? e.message : "카드 세트 생성 중 오류가 발생했습니다.");
+        setSavingNotice(null);
+        console.error("CSV 저장 실패:", e);
       }
+      window.setTimeout(() => setSavingNotice(null), 4000);
     }
-
-    setRows(result.rows);
-    setDeck(generated);
-    setErrors(errs);
   }
 
   return (
@@ -86,6 +132,22 @@ export default function CsvUploader() {
           }}
         />
       </label>
+
+      {loadingSaved && (
+        <p className="text-xs text-gray-500">저장된 CSV를 불러오는 중...</p>
+      )}
+
+      {!loadingSaved && savedFileName && (
+        <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+          마지막으로 업로드한 &quot;{savedFileName}&quot;를 자동으로 불러왔습니다. 새 파일을 올리면 이 파일을 대체합니다.
+        </p>
+      )}
+
+      {savingNotice && (
+        <p className="rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800">
+          {savingNotice}
+        </p>
+      )}
 
       {errors.length > 0 && (
         <ul className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-700">
