@@ -7,6 +7,7 @@ import {
   expirePriorityIfNeeded,
   getCardWithSymbols,
   getRoomAnswerClaims,
+  HINT_REVEAL_MS,
   PRIORITY_WINDOW_MS,
   type AnswerClaimWithDetails,
   type CardWithSymbols,
@@ -213,6 +214,15 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
   const priorityRemainingMs =
     room?.round_phase === "priority_answering" ? Math.max(0, PRIORITY_WINDOW_MS - priorityElapsedMs) : null;
   const remainingSec = priorityRemainingMs !== null ? Math.ceil(priorityRemainingMs / 1000) : null;
+  const showHint = priorityElapsedMs >= HINT_REVEAL_MS;
+
+  // 정답 기호: 우선권이 확정된 뒤(priority_symbol_id가 생긴 뒤)부터 알 수 있다.
+  // 학생 화면에서 우선권을 놓친 학생이 보는 "문제 미리보기"를 전광판에도 그대로
+  // 띄우고, 라운드가 풀리면 어떤 주제였는지 요약도 보여준다.
+  const commonSymbol =
+    centerCard && room?.priority_symbol_id
+      ? (centerCard.symbols.find((s) => s.id === room.priority_symbol_id) ?? null)
+      : null;
 
   // 50초 만료 시 전체 공개로 전환 시도 — 학생 화면과 동일한 조건부 UPDATE라서
   // 양쪽에서 동시에 호출해도 안전(idempotent)하다.
@@ -283,6 +293,22 @@ export default function TvPage({ params }: { params: Promise<{ roomCode: string 
         </div>
         <p className="text-2xl text-gray-600">참여 인원 {players.length}명</p>
       </header>
+
+      {room?.round_phase === "priority_answering" && commonSymbol && (
+        <div className="mx-auto mt-4 w-full max-w-2xl rounded-2xl border bg-white p-5 text-center shadow-sm">
+          <p className="text-sm font-semibold text-gray-400">문제 미리보기 (선택지는 아직 비공개)</p>
+          <p className="mt-1 text-xl font-bold">{commonSymbol.question_text}</p>
+          {showHint && <p className="mt-2 text-base text-amber-700">힌트: {commonSymbol.hint}</p>}
+        </div>
+      )}
+
+      {room?.round_phase === "resolved" && commonSymbol && (
+        <div className="mx-auto mt-4 w-full max-w-2xl rounded-2xl border bg-white p-5 text-center shadow-sm">
+          <p className="text-sm font-semibold text-gray-400">이번 라운드 주제</p>
+          <p className="mt-1 text-xl font-bold">{commonSymbol.label}</p>
+          <p className="mt-1 text-base text-gray-600">{commonSymbol.description}</p>
+        </div>
+      )}
 
       <div className="flex flex-1 flex-wrap items-center justify-center gap-16 py-10">
         <div className="flex flex-1 flex-wrap items-center justify-center gap-6">

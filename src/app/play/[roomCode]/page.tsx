@@ -446,7 +446,8 @@ export default function PlayPage({
             <p className="text-lg font-bold">
               {currentRoundClaim ? `${currentRoundClaim.player_nickname}님 정답!` : "이번 라운드 종료"}
             </p>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm font-semibold text-gray-700">주제: {commonSymbol.label}</p>
+            <p className="mt-1 text-sm text-gray-600">
               정답: {commonSymbol.correct_choice ? choiceText(commonSymbol, commonSymbol.correct_choice) : "-"}
             </p>
             <p className="mt-1 text-xs text-gray-400">{commonSymbol.description}</p>
